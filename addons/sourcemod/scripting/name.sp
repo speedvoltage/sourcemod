@@ -27,7 +27,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Sublime | Set My Name"
 #define PLUGIN_AUTHOR							"Peter Brev (Base code provided by Harper)"
-#define PLUGIN_VERSION							"1.1.0.0"
+#define PLUGIN_VERSION							"1.2.0.0"
 #define PLUGIN_DESCRIPTION						"Allows players to use a new name"
 #define PLUGIN_URL								"https://peterbrev.info"
 
