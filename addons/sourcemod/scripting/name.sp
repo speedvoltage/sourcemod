@@ -66,6 +66,10 @@ public void OnPluginStart()
 	/***PRE-SETUP***/
 	
 	g_names = CreateTrie();
+	
+	//We want to hook player_changename in order to block the default message from showing
+	
+	HookEvent("player_changename", namechange_callback, EventHookMode_Pre);
 
 	/***COMMANDS SETUP***/
 	
@@ -84,6 +88,12 @@ public void OnPluginStart()
 /******************************
 PUBLIC CALLBACKS
 ******************************/
+
+public Action namechange_callback(Event event, const char[] name, bool dontBroadcast)
+{
+	SetEventBroadcast(event, true);
+	return Plugin_Continue;
+}
 
 public void OnClientAuthorized(int client)
 {
@@ -108,10 +118,15 @@ public Action Command_Oname(int client, int args)
 	
 	GetCmdArg(1, arg1, sizeof(arg1));
 	
-	int Target = FindTarget(client, arg1);
+	int Target = FindTarget(client, arg1, true, false);
 	
-	char targetname[MAX_NAME_LENGTH], buffer[MAX_NAME_LENGTH], id[32];
-		
+	if (Target == -1)
+	{
+		return Plugin_Handled;
+	}
+	
+	char targetname[MAX_TARGET_LENGTH], buffer[MAX_NAME_LENGTH], id[32];
+	
 	GetClientAuthId(Target, AuthId_Steam2, id, sizeof(id));
 	g_names.GetString(id, buffer, sizeof(buffer));
 	GetClientName(Target, targetname, sizeof(targetname));
