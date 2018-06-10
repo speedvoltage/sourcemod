@@ -12,6 +12,7 @@
 		"Notes"	"Automatically disable this plugin if plugin \"sm_name\" by \"Eyal282\" is detected"
 		"Notes"	"Changed some of the colors to use hex colors rather than morecolors.inc"
 		"Notes"	"Added a new ConVar to enable or disable this plugin"
+		"Notes"	"Added translations"
 		"Notes"	"Other minor code tweak"
 	}
 	
