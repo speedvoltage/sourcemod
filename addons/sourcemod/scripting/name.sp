@@ -885,6 +885,19 @@ public Action Command_Name(int client, int args)
 		
 		if(strcmp(sName, currentname))
 			{
+				for (int i = 0; i < lines; i++)
+				{
+					if (StrContains(sName, BadNames[i], false) != -1)
+					{
+						char bantime = GetConVarInt(changename_bantime);
+						
+						if (bantime == -2)
+						{
+							PrintToChat(client, "[NAME] This name has been banned from being used.");
+							return Plugin_Handled;
+						}
+					}
+				}
 				//He changed his name
 				Handle DP = CreateDataPack();
 			
