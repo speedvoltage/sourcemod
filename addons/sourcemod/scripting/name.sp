@@ -118,7 +118,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Set My Name"
 #define PLUGIN_AUTHOR							"Peter Brev (Base code provided by Harper)"
-#define PLUGIN_VERSION							"1.3.0.31" //Build number since 05/12/18
+#define PLUGIN_VERSION							"1.4.0.1928" //Build number since 05/12/18
 #define PLUGIN_DESCRIPTION						"Allows players to use a new name"
 #define PLUGIN_URL								"https://peterbrev.info"
 
@@ -130,6 +130,9 @@ PLUGIN DEFINES
 #define CLIME									"\x0700ff15"
 #define CPLAYER								"\x07ffb200"
 
+/*Cooldown for name changes*/
+#define NAME_COOLDOWN	10.0
+
 /*Logging*/
 #define LOGTAG									"[NAME DEBUG]"
 #define CLOGTAG								"\x078e8888"
@@ -137,6 +140,13 @@ PLUGIN DEFINES
 
 /*Sound*/
 #define MAX_FILE_LEN							80
+
+/*Boolean for the ability to change names*/
+bool CanChangeName [MAXPLAYERS+1] = {true, ...};
+
+/*Boolean for EventHook*/
+
+bool EventsHook = false;
 
 /******************************
 PLUGIN STRINGMAPS
@@ -156,6 +166,9 @@ Handle changename_enable;
 Handle originalname_enable;
 Handle changename_debug;
 Handle changename_steamreset;
+Handle changename_bantime;
+Handle changename_banreason;
+
 
 //Sound Handles
 Handle changename_debug_snd;
@@ -169,6 +182,10 @@ PLUGIN STRINGS
 
 char g_SoundName_On[MAX_FILE_LEN];
 char g_SoundName_Off[MAX_FILE_LEN];
+
+char BadNames[255][64];
+char fileName[PLATFORM_MAX_PATH];
+char lines;
 
 /******************************
 PLUGIN INFO BASED ON PREVIOUS DEFINES
@@ -188,10 +205,10 @@ INITIATE THE PLUGIN
 ******************************/
 public void OnPluginStart()
 {
-
+	//I don't think this is needed anymore. Left in there, just in case.
 	/***VERIFY THE ENGINE***/
 	
-	char game[128];
+	/*char game[128];
 	GetGameFolderName(game, sizeof(game));
 
 	EngineVersion engine = GetEngineVersion();
@@ -219,7 +236,7 @@ public void OnPluginStart()
 		PrintToServer("%s WARNING: This plugin is untested in games other than Half-Life 2: Deathmatch \n");
 		PrintToServer("If this plugin is not working properly in your game, please report it to Peter \"speedvoltage\" Brev here: \n");
 		PrintToServer("https://forums.alliedmods.net/showthread.php?p=2592819 \n");
-	}
+	}*/
 	
 	/***STOP PLUGIN IF OTHER NAME PLUGIN IS FOUND***/
 	
@@ -229,11 +246,12 @@ public void OnPluginStart()
 		LogError("Attempt to load both \"sm_name.smx\" and \"name.smx\". This is invalid!");
 	}
 	
-	if (FindPluginByFile("ChatRevamp.smx") != null || FindPluginByFile("simple-chatprocessor.smx") != null || FindPluginByFile("chat-processor.smx") != null)
+	//Technically, the following code is no longer required, becaused we're now waiting two frames before changing a name.
+	/*if (FindPluginByFile("ChatRevamp.smx") != null || FindPluginByFile("simple-chatprocessor.smx") != null || FindPluginByFile("chat-processor.smx") != null)
 	{
 		ThrowError("%s WARNING: Your server is running a chat processor plugin. Because there is a minor conflict between it and \"Set My Name\", this plugin has been unloaded. Please wait for the author to completely fix the issue.", TAG);
 		ServerCommand("sm plugins unload name.smx");
-	}
+	}*/
 
 	/***PRE-SETUP***/
 	
@@ -256,7 +274,7 @@ public void OnPluginStart()
 	
 	//Create a convar for plugin version & with the help of the handle, go ahead and put the proper version
 	
-	changename_version = CreateConVar("sm_name_version", PLUGIN_VERSION, "Plugin Version (DO NOT CHANGE)", FCVAR_NOTIFY|FCVAR_SPONLY);
+	changename_version = CreateConVar("sm_name_version", PLUGIN_VERSION, "Plugin Version (DO NOT CHANGE)", FCVAR_NOTIFY|FCVAR_SPONLY|FCVAR_DEVELOPMENTONLY);
 	
 	SetConVarString(changename_version, PLUGIN_VERSION);
 	
@@ -269,6 +287,9 @@ public void OnPluginStart()
 	originalname_enable = CreateConVar("sm_oname_enable", "1", "Controls whether players can check original name of players", 0, true, 0.0, true, 1.0);
 	steamname_enable = CreateConVar("sm_sname_enable", "1", "Controls whether players can check Steam name of players", 0, true, 0.0, true, 1.0);
 	changename_steamreset = CreateConVar("sm_srname_enable", "1", "Controls whether players can reset their name to their Steam name", 0, true, 0.0, true, 1.0);
+	changename_bantime = CreateConVar("sm_nban_time", "-2", "Controls the length of the ban. Use \"-1\" to kick, \"-2\" to display a message to the player.");
+	changename_banreason = CreateConVar("sm_nban_reason", "[AUTO-DISCONNECT] This name is inappropriate. Please change it.", "What message to display on kick/ban.");
+	//AutoExecConfig(true, "plugin.badnamekickban");
 	
 	//Technical
 	changename_debug = CreateConVar("sm_name_debug", "0", "Toggles logging for debugging purposes (Only use this if you are experiencing weird issues)", 0, true, 0.0, true, 1.0); //Allows us to debug in case of an issue with the plugin
@@ -296,7 +317,8 @@ public void OnPluginStart()
 	RegConsoleCmd("sm_name", Command_Name, "sm_name <new name> (Leave blank to reset to join name or Steam name)");
 	RegConsoleCmd("sm_oname", Command_Oname, "sm_oname <#userid|name> - Find the original name of a player upon connection");
 	RegConsoleCmd("sm_sname", Command_Sname, "sm_sname <#userid|name> - Find the Steam name of a player");
-	RegConsoleCmd("sm_nhelp", Command_Hname, "sm_name_help - Prints commands to the clients console");	
+	RegConsoleCmd("sm_nhelp", Command_Hname, "sm_name_help - Prints commands to the clients console");
+
 	
 	//Configs
 	AutoExecConfig();
@@ -344,6 +366,19 @@ public Action ConVarChecker_Callback(Handle timer, any data)
 
 public void OnMapStart()
 {
+	for (int i = 0; i < lines; i++)
+	{
+		BadNames[i] = "";
+	}
+	
+	lines = 0;
+	
+	if (ReadConfig() && !EventsHook)
+	{
+		HookEvent("player_changename", checkName);
+		EventsHook = true;
+	}
+	
 	if (!GetConVarBool(changename_enable_global))
 	{
 		PrintToServer("%s This plugin is disabled. To turn it on, use \"sm_name_enable 1\"", TAG);
@@ -406,6 +441,104 @@ public void OnMapStart()
 		SetFailState("%s You did not set a valid sound file path for debug sound warn OFF.");
 	}
 	ConVarCheck();
+}
+
+public bool ReadConfig()
+{
+	BuildPath(Path_SM, fileName, sizeof(fileName), "configs/banned_names.ini");
+	Handle file = OpenFile(fileName, "rt");
+	if (file == INVALID_HANDLE)
+	{
+		LogError("[NAME] Banned names file could not be opened.", fileName);
+		return false;
+	}
+	
+	if (file != INVALID_HANDLE)
+	{
+		PrintToServer("[NAME] Successfully loaded banned_names.ini", fileName);
+	}
+	
+	while(!IsEndOfFile(file))
+	{
+		char line[64];
+		
+		if (!ReadFileLine(file, line, sizeof(line)))
+		{
+			break;
+		}
+		
+		TrimString(line);
+		ReplaceString(line, 64, " ", "");
+		
+		if (strlen(line) == 0 || (line[0] == '/' && line[1] == '/'))
+		{
+			continue;
+		}
+		strcopy(BadNames[lines], sizeof(BadNames[]), line);
+		lines++;
+	}
+	
+	CloseHandle(file);
+	return true;
+}
+
+public void OnClientPostAdminCheck(int client)
+{
+	char PlayerName[64];
+	
+	if(!GetClientName (client, PlayerName, 64))
+	{
+		return;			
+	}
+	
+	NameCheck(PlayerName, client);
+}
+
+void NameCheck(char clientName[64], char player)
+{
+	char PlayerID = GetClientUserId(player);
+	AdminId playerAdmin = GetUserAdmin(player);
+	//char playerAdmin = GetUserAdmin(player);	
+	//view_as<AdminId>(playerAdmin) = GetUserAdmin(player);
+	
+	if(GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+	{
+		return;
+	}
+	
+	ReplaceString(clientName, 64, " ", "");
+	
+	for (int i = 0; i < lines; i++)
+	{
+		if (StrContains(clientName, BadNames[i], false) != -1)
+		{
+			char bantime = GetConVarInt(changename_bantime);
+			char reason[64];
+			GetConVarString(changename_banreason, reason, 64);
+			
+			if (bantime > -1)
+			{
+				ServerCommand("sm_ban #%i %i %s", PlayerID, bantime, reason);
+			}
+			if (bantime == -2)
+			{
+				PrintToChat(player, "[NAME] This name has been banned from being used.");
+			}
+				
+			if (bantime == -1)
+			{
+				ServerCommand ("sm_kick #%i %s", PlayerID, reason);
+			}
+		}
+	}
+	return;
+}
+
+public Action checkName(Event event, const char[] name, bool dontBroadcast)
+{
+	char PlayerName[64];
+	GetEventString(event, "newname", PlayerName, 64);
+	NameCheck(PlayerName, GetClientOfUserId(GetEventInt(event, "userid")));
 }
 
 public void OnMapEnd()
@@ -694,6 +827,15 @@ public Action Command_Name(int client, int args)
 		
 		GetClientName(client, currentname, sizeof(currentname));
 		
+		if(!CanChangeName[client])
+		{
+			char cooldown[128];
+			Format(cooldown, sizeof(cooldown), "%T", "NameCooldown", LANG_SERVER, CTAG, TAG, CPLAYER);
+			PrintToChat(client, cooldown);
+			//PrintToChat(client, "[NAME] Please wait a few seconds before changing your name again.");
+			return Plugin_Handled;
+		}
+		
 		if(strcmp(buffer, currentname, true))
 		{
 			SetClientName(client, buffer);
@@ -722,6 +864,15 @@ public Action Command_Name(int client, int args)
 	}
 
 	//Let the player change his name in-game
+	if(!CanChangeName[client])
+	{
+		char cooldown2[128];
+		Format(cooldown2, sizeof(cooldown2), "%T", "NameCooldown", LANG_SERVER, CTAG, TAG, CPLAYER);
+		PrintToChat(client, cooldown2);
+		//PrintToChat(client, "[NAME] Please wait a few seconds before changing your name again.");
+		return Plugin_Handled;
+	}
+	
 	if(args > 0)
 	{ 
 		char sName[MAX_NAME_LENGTH], currentname[MAX_NAME_LENGTH], steamid[32];
@@ -733,33 +884,69 @@ public Action Command_Name(int client, int args)
 		GetCmdArgString(sName, sizeof(sName));
 		
 		if(strcmp(sName, currentname))
-		{
-			//He changed his name
-			SetClientName(client, sName);
-				
-			char ncbuffer[128];
-			Format(ncbuffer, sizeof(ncbuffer), "%T", "NameChanged", LANG_SERVER, CTAG, TAG, CPLAYER, currentname, CUSAGE, CPLAYER, sName, CUSAGE);
-			PrintToChatAll(ncbuffer);
-			if (GetConVarBool(changename_debug))
 			{
-				LogToFile(LOGPATH, "%s %s has changed their name to %s.", LOGTAG, currentname, sName);
-			}
-		}
-		else
-		{
-			//Name already set to the one he wants to set it to?
-			char nasbuffer[128];
-			Format(nasbuffer, sizeof(nasbuffer), "%T", "NewNameAlreadySet", LANG_SERVER, CTAG, TAG, CUSAGE, CPLAYER, currentname, CUSAGE);
-			PrintToChat(client, nasbuffer);
-			if (GetConVarBool(changename_debug))
+				//He changed his name
+				Handle DP = CreateDataPack();
+			
+				RequestFrame(TwoTotalFrames, DP);
+				WritePackCell(DP, GetClientUserId(client));
+				WritePackString(DP, sName);
+				CanChangeName[client] = false;
+				CreateTimer(NAME_COOLDOWN, ResetCooldown, client);
+					
+				char ncbuffer[128];
+				Format(ncbuffer, sizeof(ncbuffer), "%T", "NameChanged", LANG_SERVER, CTAG, TAG, CPLAYER, currentname, CUSAGE, CPLAYER, sName, CUSAGE);
+				PrintToChatAll(ncbuffer);
+				if (GetConVarBool(changename_debug))
 				{
-					LogToFile(LOGPATH, "%s %s has initiated an sm_name usage using a name that was already identical to the one they have.", LOGTAG, currentname);
+					LogToFile(LOGPATH, "%s %s has changed their name to %s.", LOGTAG, currentname, sName);
 				}
-		}
+			}
+			else
+			{
+				//Name already set to the one he wants to set it to?
+				char nasbuffer[128];
+				Format(nasbuffer, sizeof(nasbuffer), "%T", "NewNameAlreadySet", LANG_SERVER, CTAG, TAG, CUSAGE, CPLAYER, currentname, CUSAGE);
+				PrintToChat(client, nasbuffer);
+				if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s has initiated an sm_name usage using a name that was already identical to the one they have.", LOGTAG, currentname);
+					}
+			}
+				
 	}
 	
 	return Plugin_Handled;
 }
+
+public Action ResetCooldown(Handle Timer, any client)
+{
+	CanChangeName[client] = true;
+}
+
+void TwoTotalFrames (Handle DP)
+{
+	RequestFrame (ChangeName, DP);
+}
+
+void ChangeName (Handle DP)
+{
+	ResetPack(DP);
+	
+	int client = GetClientOfUserId(ReadPackCell(DP));
+	
+	if(client <= 0 || client > MaxClients)
+		return;
+		
+	else if(!IsClientInGame(client))
+		return;
+	
+	char NewName[64];
+	ReadPackString(DP, NewName, sizeof(NewName));
+	CloseHandle(DP);
+	SetClientInfo(client, "name", NewName);
+}
+	
 public Action Command_Sname(int client, int args)
 {
 	if (GetConVarBool(changename_enable_global))
@@ -824,7 +1011,7 @@ public Action Command_Sname(int client, int args)
 			client,
 			target_list,
 			MAXPLAYERS,
-			COMMAND_FILTER_NO_MULTI,
+			COMMAND_FILTER_NO_IMMUNITY,
 			target_name,
 			sizeof(target_name),
 			tn_is_ml)) > 0)
@@ -841,6 +1028,7 @@ public Action Command_Sname(int client, int args)
 		ReplyToTargetError(client, target_count);
 	}
 	return Plugin_Handled;
+	
 }
 
 public void OnSteamNameQueried(QueryCookie cookie, int targetclient, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue, any UserId)
