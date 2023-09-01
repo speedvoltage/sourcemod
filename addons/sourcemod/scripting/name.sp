@@ -19,7 +19,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Set My Name"
 #define PLUGIN_AUTHOR							"Peter Brev (Base code provided by Harper)"
-#define PLUGIN_VERSION							"1.4.0.1928" //Build number since 05/12/18
+#define PLUGIN_VERSION							"1.5.0.1938" //Build number since 05/12/18
 #define PLUGIN_DESCRIPTION						"Allows players to use a new name"
 #define PLUGIN_URL								"https://peterbrev.info"
 
@@ -39,18 +39,18 @@ PLUGIN DEFINES
 /*Sound*/
 #define MAX_FILE_LEN							80
 
-/*Boolean for the ability to change names*/
-//bool CanChangeName [MAXPLAYERS+1] = {true, ...};
-
 /*Boolean for EventHook*/
 
 bool EventsHook = false;
+bool bChanging[MAXPLAYERS+1];
 
 /******************************
 PLUGIN STRINGMAPS
 ******************************/
 
 StringMap g_names;
+StringMap g_bannednames;
+StringMap g_bannedids;
 
 /******************************
 PLUGIN HANDLES
@@ -98,7 +98,7 @@ char bannedidfile[PLATFORM_MAX_PATH];
 char bannedlines;
 
 /******************************
-PLUGIN INFO BASED ON PREVIOUS DEFINES
+PLUGIN INFO
 ******************************/
 
 public Plugin myinfo =
@@ -126,6 +126,8 @@ public void OnPluginStart()
 	/***PRE-SETUP***/
 	
 	g_names = CreateTrie();
+	g_bannednames = CreateTrie();
+	g_bannedids = CreateTrie();
 	
 	//We want to hook player_changename in order to block the default message from showing
 	
@@ -138,7 +140,10 @@ public void OnPluginStart()
 	//Finally, load the translations
 	
 	LoadTranslations("common.phrases");
-	//LoadTranslations("name.phrases"); Something broke translations. They used to work fine before, now they don't. I'm done trying to figure it out.
+	//LoadTranslations("name.phrases"); Something broke translations. They used to work fine before, now they don't. I'll take another look eventually.
+	
+	BuildPath(Path_SM, fileName, sizeof(fileName), "configs/banned_names.ini");
+	BuildPath(Path_SM, bannedidfile, sizeof(bannedidfile), "configs/banned_id.ini");
 
 	/***COMMANDS SETUP***/
 	
@@ -157,11 +162,11 @@ public void OnPluginStart()
 	originalname_enable = CreateConVar("sm_oname_enable", "1", "Controls whether players can check original name of players", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	steamname_enable = CreateConVar("sm_sname_enable", "1", "Controls whether players can check Steam name of players", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	changename_steamreset = CreateConVar("sm_srname_enable", "1", "Controls whether players can reset their name to their Steam name", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	changename_bantime = CreateConVar("sm_nban_time", "-2", "Controls the length of the ban. Use \"-1\" to kick, \"-2\" to display a message to the player.", FCVAR_NOTIFY);
-	changename_banreason = CreateConVar("sm_nban_reason", "[AUTO-DISCONNECT] This name is inappropriate. Please change it.", "What message to display on kick/ban.");
+	changename_bantime = CreateConVar("sm_name_ban_time", "-2", "Controls the length of the ban. Use \"-1\" to kick, \"-2\" to display a message to the player.", FCVAR_NOTIFY);
+	changename_banreason = CreateConVar("sm_name_ban_reason", "[AUTO-DISCONNECT] This name is inappropriate. Please change it.", "What message to display on kick/ban.");
 	changename_cooldown = CreateConVar("sm_name_cooldown", "30", "Time before letting players change their name again.", FCVAR_NOTIFY);
-	changename_checkbadnames = CreateConVar("sm_name_badname_checker", "1", "Controls whether bad names should be filtered.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	changename_checkbannedids = CreateConVar("sm_name_badid_checker", "1", "Controls whether bad Steam IDs should be checked.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	changename_checkbadnames = CreateConVar("sm_name_bannednames_checker", "1", "Controls whether banned names should be filtered.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
+	changename_checkbannedids = CreateConVar("sm_name_bannedids_checker", "1", "Controls whether banned Steam IDs should be checked.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	//AutoExecConfig(true, "plugin.badnamekickban");
 	
 	//Technical
@@ -181,20 +186,33 @@ public void OnPluginStart()
 	HookConVarChange(changename_debug_snd_warn_on, OnConVarChanged_SndOn);
 	HookConVarChange(changename_debug_snd_warn_off, OnConVarChanged_SndOff);
 	HookConVarChange(changename_steamreset, OnConVarChanged_Srname);
-	//HookConVarChange(changename_cooldown, name_cooldown);
+	HookConVarChange(changename_checkbadnames, OnConVarChanged_NameCheck);
+	HookConVarChange(changename_checkbannedids, OnConVarChanged_IdCheck);
+	
+	HookEvent("player_team", Event_TeamChange, EventHookMode_Pre);
 	
 	//Listners (We are using this for !srname (Steam Reset name) to go around a little bug with the engine. This is why we do not register a public command for it
-	AddCommandListener(OnClientCommands, "say");
-	AddCommandListener(OnClientCommands, "say_team");
+	/*AddCommandListener(OnClientCommands, "say");
+	AddCommandListener(OnClientCommands, "say_team");*/
+	//Steam name reset is now a normal console command.
+	
+	parseList_Name(false);
+	parseList_id(false);
 	
 	//Create the admin commands
-	RegAdminCmd("sm_nameban", Command_NameBan, ADMFLAG_ROOT, "sm_nameban <name to ban (NO SPACES)>");
+	RegAdminCmd("sm_name_ban", Command_NameBan, ADMFLAG_ROOT, "sm_name_ban <name to ban (NO SPACES)>");
+	RegAdminCmd("sm_name_unban", Command_NameUnban, ADMFLAG_ROOT, "sm_name_unban <name to unban (NO SPACES)>");
+	RegAdminCmd("sm_name_banid", Command_SteamidBan, ADMFLAG_ROOT, "sm_name_banid <SteamID to ban");
+	RegAdminCmd("sm_name_unbanid", Command_SteamidUnban, ADMFLAG_ROOT, "sm_name_unbanid <SteamID to unban");
+	RegAdminCmd("sm_name_reload", Command_FilesRefresh, ADMFLAG_ROOT, "Reloads banned_names.ini and banned_id.ini");
 	
 	//Create the public commands
 	RegConsoleCmd("sm_name", Command_Name, "sm_name <new name> (Leave blank to reset to join name or Steam name)");
 	RegConsoleCmd("sm_oname", Command_Oname, "sm_oname <#userid|name> - Find the original name of a player upon connection");
 	RegConsoleCmd("sm_sname", Command_Sname, "sm_sname <#userid|name> - Find the Steam name of a player");
+	RegConsoleCmd("sm_srname", Command_Srname);
 	RegConsoleCmd("sm_nhelp", Command_Hname, "sm_name_help - Prints commands to the clients console");
+	RegConsoleCmd("sm_name_credits", Command_Credits);
 
 	
 	//Configs
@@ -215,6 +233,23 @@ public void OnPluginStart()
 /******************************
 PUBLIC CALLBACKS
 ******************************/ 
+
+public Action Event_TeamChange(Event e, char[] sName, bool bBroadcast)
+{
+    // get the "userid" parameter from the event and convert this to a sourcemod client index
+    int iClient = GetClientOfUserId(e.GetInt("userid"));
+    
+    // if the bool is true for this client
+    if (bChanging[iClient])
+    {
+        // block the team change event
+        bChanging[iClient] = false;
+        return Plugin_Handled;
+    }
+    
+    // in all other cases, the event proceeds as normal.
+    return Plugin_Continue;
+}
 
 public void OnConfigsExecuted()
 {
@@ -240,6 +275,7 @@ public Action ConVarChecker_Callback(Handle timer, any data)
 			LogToFile(LOGPATH, "%s Plugin is disabled due to ConVar \"sm_cname_enable\", \"sm_oname_enable\" and \"sm_sname_enable\" being turned off.", LOGTAG);
 		}
 	}	
+	return Plugin_Handled;
 }
 
 public void OnMapStart()
@@ -275,7 +311,7 @@ public void OnMapStart()
 		SetFailState("%s You did not set a valid value for \"sm_name_cooldown\".", TAG);
 	}
 	
-	if (GetConVarInt(changename_cooldown) <= 1)
+	if (GetConVarInt(changename_cooldown) < 1)
 	{
 		SetConVarInt(changename_cooldown, 30, _, true);
 		PrintToServer("%s Cooldown value cannot be less than 1 second. Value reset to default (30 seconds).", TAG);
@@ -356,7 +392,7 @@ public void OnMapStart()
 
 public bool ReadConfig()
 {
-	BuildPath(Path_SM, fileName, sizeof(fileName), "configs/banned_names.ini");
+	//BuildPath(Path_SM, fileName, sizeof(fileName), "configs/banned_names.ini");
 	Handle file = OpenFile(fileName, "rt");
 	if (file == INVALID_HANDLE)
 	{
@@ -439,30 +475,32 @@ void NameCheck(char clientName[64], char player)
 			char bantime = GetConVarInt(changename_bantime);
 			char reason[64];
 			GetConVarString(changename_banreason, reason, 64);
-			
-			if (bantime > -1)
+			if (GetConVarBool(changename_checkbadnames))
 			{
-				ServerCommand("sm_ban #%i %i %s", PlayerID, bantime, reason);
-				if (GetConVarBool(changename_debug))
+				if (bantime > -1)
 				{
-					LogToFile(LOGPATH, "%s %s was banned for using a banned name.", LOGTAG, clientName);
-				}				
-			}
-			if (bantime == -2)
-			{
-				SetClientName(player, "<NAME REMOVED>");
-				PrintToChat(player, "%s%s %sYour name has been removed, because it is banned on this server.", CTAG, TAG, CUSAGE);
-				if (GetConVarBool(changename_debug))
-				{
-					LogToFile(LOGPATH, "%s %s's name removed (banned name).", LOGTAG, clientName);
+					ServerCommand("sm_ban #%i %i %s", PlayerID, bantime, reason);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s was banned for using a banned name.", LOGTAG, clientName);
+					}				
 				}
-			}	
-			if (bantime == -1)
-			{
-				ServerCommand ("sm_kick #%i %s", PlayerID, reason);
-				if (GetConVarBool(changename_debug))
+				if (bantime == -2)
 				{
-					LogToFile(LOGPATH, "%s %s was kicked for using a banned name.", LOGTAG, clientName);
+					SetClientName(player, "<NAME REMOVED>");
+					PrintToChat(player, "%s%s %sYour name has been removed, because it is banned on this server.", CTAG, TAG, CUSAGE);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s's name removed (banned name).", LOGTAG, clientName);
+					}
+				}	
+				if (bantime == -1)
+				{
+					ServerCommand ("sm_kick #%i %s", PlayerID, reason);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s was kicked for using a banned name.", LOGTAG, clientName);
+					}
 				}
 			}
 		}
@@ -475,11 +513,12 @@ public Action checkName(Event event, const char[] name, bool dontBroadcast)
 	char PlayerName[64];
 	GetEventString(event, "newname", PlayerName, 64);
 	NameCheck(PlayerName, GetClientOfUserId(GetEventInt(event, "userid")));
+	return Plugin_Handled;
 }
 
 public bool ReadBannedId()
 {
-	BuildPath(Path_SM, bannedidfile, sizeof(bannedidfile), "configs/banned_id.ini");
+	//BuildPath(Path_SM, bannedidfile, sizeof(bannedidfile), "configs/banned_id.ini");
 	Handle file = OpenFile(bannedidfile, "rt");
 	if (file == INVALID_HANDLE)
 	{
@@ -540,12 +579,15 @@ void IdCheck(char getsteamid[64], char client)
 		if (StrContains(getsteamid, bannedsteamids[i], false) != -1)
 		{
 			char bantime = GetConVarInt(changename_bantime);
-			if (bantime == -2)
+			if (GetConVarBool(changename_checkbannedids))
 			{
-				PrintToChat(client, "%s%s %sYour Steam ID is banned from changing names.", CTAG, TAG, CUSAGE);
-				if (GetConVarBool(changename_debug))
+				if (bantime == -2)
 				{
-					LogToFile(LOGPATH, "%s %s attempted to change their name, but they are banned from doing so.", LOGTAG, client);
+					PrintToChat(client, "%s%s %sYour Steam ID is banned from changing names.", CTAG, TAG, CUSAGE);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s attempted to change their name, but they are banned from doing so.", LOGTAG, client);
+					}
 				}
 			}
 		}
@@ -558,6 +600,7 @@ public Action checkId(Event event, const char[] name, bool dontBroadcast)
 	char PlayerName[64];
 	GetEventString(event, "steamid2", PlayerName, 64);
 	IdCheck(PlayerName, GetClientOfUserId(GetEventInt(event, "userid")));
+	return Plugin_Handled;
 }
 
 public void OnMapEnd()
@@ -593,20 +636,26 @@ public Action namechange_callback(Event event, const char[] name, bool dontBroad
 	return Plugin_Continue;
 }
 
-public void CheckCommands(int client, char[] string)
+//public void CheckCommands(int client, char[] string)
+public Action Command_Srname(int client, int args)
 {
 	if (GetConVarBool(changename_enable_global))
 	{
 		if (GetConVarBool(changename_steamreset))
 		{
-			if (!strncmp(string, "!srname", 7, false) || !strncmp(string, "srname", 6, false) || !strncmp(string, "!steamname", 10, false) || !strncmp(string, "steamname", 9, false))
+			if (args > 0)
+			{
+				return Plugin_Handled;
+			}
+			
+			if (!args)
 			{
 				QueryClientConVar(client, "name", ChangeNameToSteamName);
 				if (GetConVarBool(changename_debug))
 				{
 					LogToFile(LOGPATH, "%s %N has attempted a Steam name reset.", LOGTAG, client);
 				}
-				return;
+				return Plugin_Handled;
 			}
 		}
 		else
@@ -617,7 +666,7 @@ public void CheckCommands(int client, char[] string)
 				LogToFile(LOGPATH, "%s Steam name reset ability disabled.", LOGTAG);
 				LogToFile(LOGPATH, "%s %N attempted a Steam name reset but ability is disabled.", LOGTAG, client);
 			}
-			return;
+			return Plugin_Handled;
 		}
 	} 
 	else 
@@ -628,17 +677,9 @@ public void CheckCommands(int client, char[] string)
 			LogToFile(LOGPATH, "%s Plugin disabled.", LOGTAG);
 			LogToFile(LOGPATH, "%s %N attempted a Steam name reset but plugin is disabled.", LOGTAG, client);
 		}	
-		return;
+		return Plugin_Handled;
 	}
-}
-
-public void Credits(int client, char[] string)
-{
-	if (!strncmp(string, "name credits", 12, false))
-	{
-		PrintToChat(client, "%s%s %s\"Set My Name\" %screated by %sPeter Brev. %sSpecial thanks to %sharper%s, %seyal282 %sand %sGrey83%s.", CTAG, TAG, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE);
-		return;
-	}
+	return Plugin_Handled;
 }
 
 public void OnClientPutInServer(int client)
@@ -657,23 +698,18 @@ public void OnClientPutInServer(int client)
 		return;			
 	}
 	
-	NameCheck(PlayerName, client);
+	//NameCheck(PlayerName, client); //Whoops, leave it off.
 }
 
-public Action OnClientCommands(int client, char[] command, int argc)
+/*public Action OnClientCommands(int client, char[] command, int argc)
 {
 	char text[32];
 	GetCmdArgString(text, sizeof(text));
 	StripQuotes(text);
 	
-	char text2[32];
-	GetCmdArgString(text2, sizeof(text2));
-	StripQuotes(text2);
-	
 	CheckCommands(client, text);
-	Credits(client, text2);
 	return Plugin_Continue;
-}
+}*/
 
 public void OnClientAuthorized(int client)
 {
@@ -698,13 +734,13 @@ public Action Command_NameBan(int client, int args)
 	}
 	if (args < 1)
 	{
-		ReplyToCommand(client, "%s%s %sUsage: %ssm_nameban <name to ban (NO SPACES)>", CTAG, TAG, CUSAGE, CLIME);
+		PrintToChat(client, "%s%s %sUsage: %ssm_name_ban <name to ban (NO SPACES)>", CTAG, TAG, CUSAGE, CLIME);
 		return Plugin_Handled;
 	}
 	
 	if (args > 1)
 	{
-		ReplyToCommand(client, "%s%s %sOnly use one word with no spaces.", CTAG, TAG, CUSAGE, CLIME);
+		PrintToChat(client, "%s%s %sOnly use one word with no spaces.", CTAG, TAG, CUSAGE, CLIME);
 		return Plugin_Handled;
 	}
 	
@@ -712,17 +748,267 @@ public Action Command_NameBan(int client, int args)
 	
 	GetCmdArgString(arg1, sizeof(arg1));
 	
+	StripQuotes(arg1);
+	TrimString(arg1);
+	
 	if (args == 1)
 	{
-		Handle nfile = OpenFile(fileName, "a");
+		Handle nfile = OpenFile(fileName, "a+");
+		for (int i = 0; i < lines; i++)
+		{
+			if (StrContains(arg1, BadNames[i], false) != -1)
+			{
+				PrintToChat(client, "%s%s %sThis name is already banned.", CTAG, TAG, CUSAGE);
+				return Plugin_Handled;
+			}
+		}
 		WriteFileLine(nfile, arg1);
-		ReplyToCommand(client, "%s%s %sThis name has been added to the banned names list.", CTAG, TAG, CUSAGE);
+		PrintToChat(client, "%s%s %sThis name has been added to the banned names list.", CTAG, TAG, CUSAGE);
+		parseList_Name(false);
 		CloseHandle(nfile);
 		if (GetConVarBool(changename_debug))
-			{
-				LogToFile(LOGPATH, "%s %s has been banned from being used in names.", LOGTAG, arg1);
-			}
+		{
+			LogToFile(LOGPATH, "%s %s has been banned from being used in names.", LOGTAG, arg1);
+		}
 		return Plugin_Handled;
+	}
+	return Plugin_Handled;
+}
+
+public Action Command_SteamidBan(int client, int args)
+{
+	if (client == 0)
+	{
+		PrintToServer("[NAME] This command can only be used in-game.");
+		return Plugin_Handled;
+	}
+	
+	if (args < 1)
+	{
+		PrintToChat(client, "%s%s %sUsage: %ssm_name_banid <SteamID to ban>", CTAG, TAG, CUSAGE, CLIME);
+		return Plugin_Handled;
+	}
+	
+	char arg1[32];
+	
+	GetCmdArgString(arg1, sizeof(arg1));
+	
+	StripQuotes(arg1);
+	TrimString(arg1);
+	
+	if(StrContains(arg1, "STEAM_", false) == -1)
+	{
+		PrintToChat(client, "%s%s %sThis is not a Steam 2 ID (STEAM_0:X:XXXX).", CTAG, TAG, CUSAGE);
+		return Plugin_Handled;
+	}
+	
+	for (int i = 0; i < bannedlines; i++)
+	{
+		if (StrContains(arg1, bannedsteamids[i], false) != -1)
+		{
+			PrintToChat(client, "%s%s %sThis SteamID is already banned.", CTAG, TAG, CUSAGE);
+			return Plugin_Handled;
+		}
+	}
+	
+	Handle nfile = OpenFile(bannedidfile, "a+");
+	WriteFileLine(nfile, arg1);
+	PrintToChat(client, "%s%s %s%s %shas been added to the banned SteamIDs list.", CTAG, TAG, CPLAYER, arg1, CUSAGE);
+	parseList_id(false);
+	CloseHandle(nfile);
+	if (GetConVarBool(changename_debug))
+	{
+		LogToFile(LOGPATH, "%s %s has been banned from changing names.", LOGTAG, arg1);
+	}
+	
+	return Plugin_Handled;
+}
+
+public Action Command_SteamidUnban(int client, int args)
+{
+	File nfile = OpenFile(bannedidfile, "a+");
+	
+	if (nfile == null)
+	{
+		LogError("%s Could not open banned_id.ini", TAG);
+		PrintToChat(client, "%s%s %sCould not open banned_id.ini", CTAG, TAG, CERROR);
+	}
+	
+	if (client == 0)
+	{
+		PrintToServer("[NAME] This command can only be used in-game.");
+		return Plugin_Handled;
+	}
+	
+	if (args == 0)
+	{
+		PrintToChat(client, "%s%s %sUsage: %ssm_name_unbanid <SteamID to unban (NO SPACES)>", CTAG, TAG, CUSAGE, CLIME);
+		return Plugin_Handled;
+	}
+	
+	char arg1[32], arg2[32];
+	
+	GetCmdArgString(arg2, sizeof(arg2));
+	
+	StripQuotes(arg2);
+	TrimString(arg2);
+	
+	bool found = false;
+	ArrayList fileArray = CreateArray(32);
+	
+	while(!nfile.EndOfFile() && nfile.ReadLine(arg1, sizeof(arg1)))
+	{
+		if (strlen(arg1) < 1 || IsCharSpace(arg1[0])) continue;
+		ReplaceString(arg1, sizeof(arg1), "\n", "", false); 
+		if(!StrEqual(arg1, arg2, false))
+		{
+			fileArray.PushString(arg1);
+		}
+		else
+		{
+			found = true;
+		}
+	}
+	
+	delete nfile;
+	
+	if (found)
+	{
+		DeleteFile(bannedidfile);
+		File newFile = OpenFile(bannedidfile, "a+");
+		
+		if (newFile == null)
+		{
+			LogError("%s Could not open banned_id.ini", TAG);
+			PrintToChat(client, "%s%s %sCould not open banned_id.ini", CTAG, TAG, CERROR);
+			return Plugin_Handled;
+		}
+		
+		PrintToChat(client, "%s%s %s%s %shas been removed from the banned SteamIDs list.", CTAG, TAG, CPLAYER, arg2, CUSAGE);
+		if (GetConVarBool(changename_debug))
+		{
+			LogToFile(LOGPATH, "%s %s removed from banned SteamIDs list.", TAG, arg2);
+		}
+
+		for (int i = 0; i < GetArraySize(fileArray); i++)
+		{
+			char writeLine[32];
+			fileArray.GetString(i, writeLine, sizeof(writeLine));
+			newFile.WriteLine(writeLine);
+			if (GetConVarBool(changename_debug))
+			{
+				LogToFile(LOGPATH,"%s %s added to the list.", TAG, writeLine);
+			}
+		}
+		
+		delete newFile;
+		delete fileArray;
+		parseList_id(false);
+		return Plugin_Handled;
+	}
+	else
+	{
+		PrintToChat(client, "%s%s %sThis SteamID could not be found.", CTAG, TAG, CUSAGE);
+		return Plugin_Handled;
+	}
+}
+
+public Action Command_NameUnban(int client, int args)
+{
+	File nfile = OpenFile(fileName, "a+");
+	
+	if (nfile == null)
+	{
+		LogError("%s Could not open banned_names.ini", TAG);
+		PrintToChat(client, "%s%s %sCould not open banned_names.ini", CTAG, TAG, CERROR);
+	}
+	
+	if (args == 0)
+	{
+		PrintToChat(client, "%s%s %sUsage: %ssm_name_unban <name to unban (NO SPACES)>", CTAG, TAG, CUSAGE, CLIME);
+		return Plugin_Handled;
+	}
+	
+	char arg1[32], arg2[32];
+	
+	GetCmdArgString(arg2, sizeof(arg2));
+	
+	StripQuotes(arg2);
+	TrimString(arg2);
+	
+	bool found = false;
+	ArrayList fileArray = CreateArray(32);
+	
+	while(!nfile.EndOfFile() && nfile.ReadLine(arg1, sizeof(arg1)))
+	{
+		if (strlen(arg1) < 1 || IsCharSpace(arg1[0])) continue;
+		ReplaceString(arg1, sizeof(arg1), "\n", "", false); 
+		if(!StrEqual(arg1, arg2, false))
+		{
+			fileArray.PushString(arg1);
+		}
+		else
+		{
+			found = true;
+		}
+	}
+	
+	delete nfile;
+	
+	if (found)
+	{
+		DeleteFile(fileName);
+		File newFile = OpenFile(fileName, "a+");
+		
+		if (newFile == null)
+		{
+			LogError("%s Could not open banned_names.ini", TAG);
+			PrintToChat(client, "%s%s %sCould not open banned_names.ini", CTAG, TAG, CERROR);
+			return Plugin_Handled;
+		}
+		
+		PrintToChat(client, "%s%s %s%s %shas been removed from the banned name list.", CTAG, TAG, CPLAYER, arg2, CUSAGE);
+		if (GetConVarBool(changename_debug))
+		{
+			LogToFile(LOGPATH,"%s %s removed from banned names list.", TAG, arg2);
+		}
+		
+		for (int i = 0; i < GetArraySize(fileArray); i++)
+		{
+			char writeLine[32];
+			fileArray.GetString(i, writeLine, sizeof(writeLine));
+			newFile.WriteLine(writeLine);
+			if (GetConVarBool(changename_debug))
+			{
+			LogToFile(LOGPATH,"%s %s removed from banned names list.", TAG, arg2);
+			}
+		}
+		
+		delete newFile;
+		delete fileArray;
+		parseList_Name(false);
+		return Plugin_Handled;
+	}
+	else
+	{
+		PrintToChat(client, "%s%s %sThe name could not be found.", CTAG, TAG, CUSAGE);
+		return Plugin_Handled;
+	}
+}
+
+public Action Command_FilesRefresh(int client, int args)
+{
+	PrintToChat(client, "%s%s %sRebuilding files...", CTAG, TAG, CUSAGE);
+	parseList_Name(true, client);
+	parseList_id(true, client);
+	return Plugin_Handled;
+}
+
+public Action Command_Credits(int client, int args)
+{
+	if (!args || args > 0)
+	{
+		PrintToChat(client, "%s%s %s\"Set My Name\" %screated by %sPeter Brev. %sSpecial thanks to %sharper%s, %seyal282 %sand %sGrey83%s.", CTAG, TAG, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE, CPLAYER, CUSAGE);
 	}
 	return Plugin_Handled;
 }
@@ -787,7 +1073,7 @@ public Action Command_Oname(int client, int args)
 	if (args < 1)
 	{
 		//Oname usage
-		ReplyToCommand(client, "%s%s %sUsage: %ssm_oname <#userid|name>", CTAG, TAG, CUSAGE, CLIME);
+		PrintToChat(client, "%s%s %sUsage: %ssm_oname <#userid|name>", CTAG, TAG, CUSAGE, CLIME);
 		return Plugin_Handled;
 	}
 	
@@ -811,7 +1097,7 @@ public Action Command_Oname(int client, int args)
 	if(strcmp(targetname, buffer))//We are now going to check whether the name == Original name upon connection
 	{
 		//Show orginal name if name was changed
-		ReplyToCommand(client, "%s%s %sJoin name of %s%s %sis %s%s%s.", CTAG, TAG, CUSAGE, CPLAYER, targetname, CUSAGE, CPLAYER, buffer, CUSAGE);
+		PrintToChat(client, "%s%s %sJoin name of %s%s %sis %s%s%s.", CTAG, TAG, CUSAGE, CPLAYER, targetname, CUSAGE, CPLAYER, buffer, CUSAGE);
 		if (GetConVarBool(changename_debug))
 			{
 				LogToFile(LOGPATH, "%s Showing join name of %s (%s).", LOGTAG, targetname, buffer);
@@ -819,7 +1105,7 @@ public Action Command_Oname(int client, int args)
 			}
 	} else {
 		//Name was not changed, then it must be their original name
-		ReplyToCommand(client, "%s%s %s%s %sis the name they had when joining the server.", CTAG, TAG, CPLAYER, targetname, CUSAGE);
+		PrintToChat(client, "%s%s %s%s %sis the name they had when joining the server.", CTAG, TAG, CPLAYER, targetname, CUSAGE);
 		if (GetConVarBool(changename_debug))
 			{
 				LogToFile(LOGPATH, "%s %s is the name they had when they joined the server.", LOGTAG, targetname);
@@ -876,26 +1162,12 @@ public Action Command_Name(int client, int args)
 		PrintToServer("%s This command can only be used in-game.", TAG);	
 		return Plugin_Handled;
 	}
-	
-	int iNow = GetTime(), iCooldown = GetConVarInt(changename_cooldown);
-	
-	if(iCooldown > 0)
-		{
-			int iTimeLeft = g_iLastUsed[client] + iCooldown - iNow;
-			int mins, secs;
-			if (iTimeLeft > 0)
-			{
-				mins = iTimeLeft / 60;
-				secs = iTimeLeft % 60;
-				//char timeleftbuffer[128];
-				PrintToChat(client, "%s%s %sYou must wait %s%d:%02d %sbefore changing your name again.", CTAG, TAG, CUSAGE, CPLAYER, mins, secs, CUSAGE);
-				return Plugin_Handled;
-			}
-		}
-		g_iLastUsed[client] = iNow;
 
 	//With the saved player information, let us prepare the reset name stage
-	if(args == 0)
+	
+	AdminId playerAdmin = GetUserAdmin(client);
+	
+	if (args == 0)
 	{
 		char id[32], buffer[MAX_NAME_LENGTH], currentname[MAX_NAME_LENGTH];
 		
@@ -907,7 +1179,49 @@ public Action Command_Name(int client, int args)
 				
 		if(strcmp(buffer, currentname, false))
 		{
-					
+			if (GetConVarBool(changename_checkbadnames))
+			{	
+				if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+				{
+					for (int x = 0; x < lines; x++)
+						{
+						if (StrContains(buffer, BadNames[x], false) != -1)
+						{
+							char bantime = GetConVarInt(changename_bantime);
+							
+							if (bantime == -2)
+							{
+								PrintToChat(client, "%s%s %sYou cannot restore your name, because it is banned.", CTAG, TAG, CUSAGE);
+
+								if (GetConVarBool(changename_debug))
+								{
+									LogToFile(LOGPATH, "%s %s attempted to change their name to a banned name.", LOGTAG, client);
+								}
+								return Plugin_Handled;
+							}
+						}				
+					}
+				}
+			}
+			
+			int iNow = GetTime(), iCooldown = GetConVarInt(changename_cooldown);
+	
+			if(iCooldown > 0)
+			{
+				int iTimeLeft = g_iLastUsed[client] + iCooldown - iNow;
+				int mins, secs;
+				if (iTimeLeft > 0)
+				{
+					mins = iTimeLeft / 60;
+					secs = iTimeLeft % 60;
+					//char timeleftbuffer[128];
+					PrintToChat(client, "%s%s %sYou must wait %s%d:%02d %sbefore changing your name again.", CTAG, TAG, CUSAGE, CPLAYER, mins, secs, CUSAGE);
+					return Plugin_Handled;
+				}
+			}
+			
+			g_iLastUsed[client] = iNow;	
+			
 			SetClientName(client, buffer);
 			
 			//He reset his name
@@ -941,53 +1255,78 @@ public Action Command_Name(int client, int args)
 		
 		if(strcmp(sName, currentname))
 		{
-			for (int i = 0; i < lines; i++)
-			{
-				if (StrContains(sName, BadNames[i], false) != -1)
+			if (GetConVarBool(changename_checkbadnames))
+			{	
+				if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
 				{
-					char bantime = GetConVarInt(changename_bantime);
-					
-					if (bantime == -2)
+					for (int i = 0; i < lines; i++)
 					{
-						PrintToChat(client, "%s%s %sThis name has been banned from being used.", CTAG, TAG, CUSAGE);
-						if (GetConVarBool(changename_debug))
+						if (StrContains(sName, BadNames[i], false) != -1)
 						{
-							LogToFile(LOGPATH, "%s %s attempted to change their name to a banned name.", LOGTAG, client);
-						}
-						return Plugin_Handled;
-					}
-				}				
-				
-			}
-			for (int y = 0; y < bannedlines; y++)
-			{
-				if (StrContains(steamid, bannedsteamids[y], false) != -1)
-				{
-					char bantime = GetConVarInt(changename_bantime);
-									
-					if (bantime == -2)
-					{
-						PrintToChat(client, "%s%s %sYou cannot change your name due to an active name ban.", CTAG, TAG, CERROR);
-						if (GetConVarBool(changename_debug))
-						{
-							LogToFile(LOGPATH, "%s %s attempted to change their name, but their Steam ID is banned from doing so.", LOGTAG, client);
-						}
-						return Plugin_Handled;
+							char bantime = GetConVarInt(changename_bantime);
+							
+							if (bantime == -2)
+							{
+								PrintToChat(client, "%s%s %sThis name is banned from being used.", CTAG, TAG, CUSAGE);
+
+								if (GetConVarBool(changename_debug))
+								{
+									LogToFile(LOGPATH, "%s %s attempted to change their name to a banned name.", LOGTAG, client);
+								}
+								return Plugin_Handled;
+							}
+						}				
+						
 					}
 				}
 			}
+			if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+			{
+				for (int y = 0; y < bannedlines; y++)
+				{				
+					if (StrContains(steamid, bannedsteamids[y], false) != -1)
+					{
+						char bantime = GetConVarInt(changename_bantime);
+						if (GetConVarBool(changename_checkbannedids))
+						{					
+							if (bantime == -2)
+							{
+								PrintToChat(client, "%s%s %sYou cannot change your name due to an active name ban.", CTAG, TAG, CERROR);
+								if (GetConVarBool(changename_debug))
+								{
+									LogToFile(LOGPATH, "%s %s attempted to change their name, but their Steam ID is banned from doing so.", LOGTAG, client);
+								}
+								return Plugin_Handled;
+							}
+						}
+					}
+				}
+			}
+			
+			int iNow = GetTime(), iCooldown = GetConVarInt(changename_cooldown);
+	
+			if(iCooldown > 0)
+			{
+				int iTimeLeft = g_iLastUsed[client] + iCooldown - iNow;
+				int mins, secs;
+				if (iTimeLeft > 0)
+				{
+					mins = iTimeLeft / 60;
+					secs = iTimeLeft % 60;
+					//char timeleftbuffer[128];
+					PrintToChat(client, "%s%s %sYou must wait %s%d:%02d %sbefore changing your name again.", CTAG, TAG, CUSAGE, CPLAYER, mins, secs, CUSAGE);
+					return Plugin_Handled;
+				}
+			}
+			
+			g_iLastUsed[client] = iNow;	
+			
 			//He changed his name
 			Handle DP = CreateDataPack();
 		
 			RequestFrame(TwoTotalFrames, DP);
 			WritePackCell(DP, GetClientUserId(client));
 			WritePackString(DP, sName);
-
-			PrintToChatAll("%s%s %s%s %shas changed their name to %s%s%s.", CTAG, TAG, CPLAYER, currentname, CUSAGE, CPLAYER, sName, CUSAGE);
-			if (GetConVarBool(changename_debug))
-			{
-				LogToFile(LOGPATH, "%s %s has changed their name to %s.", LOGTAG, currentname, sName);
-			}
 		}
 		else
 		{
@@ -1021,10 +1360,19 @@ void ChangeName (Handle DP)
 	else if(!IsClientInGame(client))
 		return;
 	
+	char currentname[MAX_NAME_LENGTH];
+	GetClientName(client, currentname, sizeof(currentname));
 	char NewName[64];
 	ReadPackString(DP, NewName, sizeof(NewName));
 	CloseHandle(DP);
+	bChanging[client] = true;
 	SetClientInfo(client, "name", NewName);
+	PrintToChatAll("%s%s %s%s %shas changed their name to %s%s%s.", CTAG, TAG, CPLAYER, currentname, CUSAGE, CPLAYER, NewName, CUSAGE);
+	if (GetConVarBool(changename_debug))
+	{
+		LogToFile(LOGPATH, "%s %s has changed their name to %s.", LOGTAG, currentname, NewName);
+	}
+	return;
 }
 	
 public Action Command_Sname(int client, int args)
@@ -1069,7 +1417,7 @@ public Action Command_Sname(int client, int args)
 
 	if (args < 1)
 	{
-		ReplyToCommand(client, "%s%s %sUsage: %ssm_sname <#userid|name>", CTAG, TAG, CUSAGE, CLIME);
+		PrintToChat(client, "%s%s %sUsage: %ssm_sname <#userid|name>", CTAG, TAG, CUSAGE, CLIME);
 		return Plugin_Handled;
 	}
 	
@@ -1141,9 +1489,73 @@ public void ChangeNameToSteamName(QueryCookie cookie, int client, ConVarQueryRes
 	GetClientName(client, name, sizeof(name));	
 	GetClientAuthId(client, AuthId_Steam2, steamid, sizeof(steamid));
 	
-	int iNow = GetTime(), iCooldown = GetConVarInt(changename_cooldown);
+	if (client < 1 || client > MaxClients || !IsClientInGame(client))
+        return;
+
+	if (result != ConVarQuery_Okay)
+    {
+        PrintToChat(client, "%s%s %sCould not retrieve your Steam name.", CTAG, TAG, CERROR);
+        if (GetConVarBool(changename_debug))
+		{
+			LogToFile(LOGPATH, "%s %s's Steam name not retrieved.", LOGTAG, client);
+		}
+        return;
+    }
 	
-	if(iCooldown > 0)
+	AdminId playerAdmin = GetUserAdmin(client);
+	
+	if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+	{	
+		for (int i = 0; i < lines; i++)
+	    {
+	        if (StrContains(cvarValue, BadNames[i], false) != -1)
+	        {
+	            int bantime = GetConVarInt(changename_bantime);
+	                
+	            if (bantime == -2) 
+	            {
+					PrintToChat(client, "%s%s %sYou cannot use your Steam name, because it is banned.", CTAG, TAG, CUSAGE);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s attempted to reset their name to their Steam name, but it is part of the banned names list.", LOGTAG, client);
+					}
+	            }
+	            
+	            // name is naughty so we do not proceed further.
+	            return;
+	        }
+	    }
+		
+		for (int y = 0; y < bannedlines; y++)
+		{
+			if (StrContains(steamid, bannedsteamids[y], false) != -1)
+			{
+				char bantime = GetConVarInt(changename_bantime);
+										
+				if (bantime == -2)
+				{
+					PrintToChat(client, "%s%s %sYou cannot change your name due to an active name ban.", CTAG, TAG, CUSAGE);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s attempted to reset their name, but their Steam ID is banned from doing so.", LOGTAG, client);
+					}
+					return;
+				}
+			}
+		}
+	}
+    
+    // steam name has passed the naughty check, now we can change it.
+	if (!strcmp(name, cvarValue))
+	{
+		PrintToChat(client, "%s%s %sYour name is already your Steam name.", CTAG, TAG, CUSAGE);
+		return;
+	}
+	else
+	{
+		int iNow = GetTime(), iCooldown = GetConVarInt(changename_cooldown);
+	
+		if(iCooldown > 0)
 		{
 			int iTimeLeft = g_iLastUsed[client] + iCooldown - iNow;
 			int mins, secs;
@@ -1158,66 +1570,6 @@ public void ChangeNameToSteamName(QueryCookie cookie, int client, ConVarQueryRes
 		}
 		g_iLastUsed[client] = iNow;
 		
-    if (client < 1 || client > MaxClients || !IsClientInGame(client))
-        return;
-
-    if (result != ConVarQuery_Okay)
-    {
-        PrintToChat(client, "%s%s %sCould not retrieve your Steam name.", CTAG, TAG, CERROR);
-		{
-			LogToFile(LOGPATH, "%s %s's Steam name not retrieved.", LOGTAG, client);
-		}
-        return;
-    }
-	
-	
-
-    for (int i = 0; i < lines; i++)
-    {
-        if (StrContains(cvarValue, BadNames[i], false) != -1)
-        {
-            int bantime = GetConVarInt(changename_bantime);
-                
-            if (bantime == -2) {
-                PrintToChat(client, "%s%s %sYou cannot use your Steam name, because it is banned.", CTAG, TAG, CUSAGE);
-				if (GetConVarBool(changename_debug))
-				{
-					LogToFile(LOGPATH, "%s %s attempted to reset their name to their Steam name, but it is part of the banned names list.", LOGTAG, client);
-				}
-            }
-            
-            // name is naughty so we do not proceed further.
-            return;
-        }
-    }
-	
-	for (int y = 0; y < bannedlines; y++)
-			{
-				if (StrContains(steamid, bannedsteamids[y], false) != -1)
-				{
-					char bantime = GetConVarInt(changename_bantime);
-									
-					if (bantime == -2)
-					{
-						PrintToChat(client, "%s%s %sYou cannot change your name due to an active name ban.", CTAG, TAG, CUSAGE);
-						//PrintToChat(client, "[NAME] SteamID banned.");
-						if (GetConVarBool(changename_debug))
-						{
-							LogToFile(LOGPATH, "%s %s attempted to reset their name, but their Steam ID is banned from doing so.", LOGTAG, client);
-						}
-						return;
-					}
-				}
-			}
-    
-    // steam name has passed the naughty check, now we can change it.
-	if (!strcmp(name, cvarValue))
-	{
-		PrintToChat(client, "%s%s %sYour name is already your Steam name.", CTAG, TAG, CUSAGE);
-		return;
-	}
-	else
-	{
 		SetClientInfo(client, "name", cvarValue);
 		PrintToChatAll("%s%s %s%s %shas restored their Steam name: %s%s%s.", CTAG, TAG, CPLAYER, name, CUSAGE, CPLAYER, cvarValue, CUSAGE);
 		PrintToChat(client, "%sYour Steam name may take a few seconds to show.", CUSAGE);
@@ -1228,8 +1580,8 @@ public void ChangeNameToSteamName(QueryCookie cookie, int client, ConVarQueryRes
 	}
     
     // as we have used a Plugin return above, must use one at the end to avoid compiler warning.
-    return;
-} 
+	return;
+}
 
 public void ChangeNameToSteamNameRenameDisabled(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue)
 {
@@ -1237,36 +1589,43 @@ public void ChangeNameToSteamNameRenameDisabled(QueryCookie cookie, int client, 
 	
 	GetClientName(client, name, sizeof(name));	
 			
-    if (client < 1 || client > MaxClients || !IsClientInGame(client))
-        return;
+	if (client < 1 || client > MaxClients || !IsClientInGame(client))
+		return;
 
-    if (result != ConVarQuery_Okay)
-    {
-        PrintToChat(client, "%s%s %sCould not retrieve your Steam name.", CTAG, TAG, CERROR);
+	if (result != ConVarQuery_Okay)
+	{
+		PrintToChat(client, "%s%s %sCould not retrieve your Steam name.", CTAG, TAG, CERROR);
+		if (GetConVarBool(changename_debug))
 		{
 			LogToFile(LOGPATH, "%s %s's Steam name not retrieved and restored. Changing names ability disabled.", LOGTAG, client);
 		}
-        return;
-    }
+		return;
+	}
 	
-    for (int i = 0; i < lines; i++)
-    {
-        if (StrContains(cvarValue, BadNames[i], false) != -1)
-        {
-            int bantime = GetConVarInt(changename_bantime);
-                
-            if (bantime == -2) {
-                PrintToChat(client, "%s%s %sThe ability to change names has now been disabled. Your Steam name was not restored, because it is banned on this server.", CTAG, TAG, CUSAGE);
-				if (GetConVarBool(changename_debug))
+	AdminId playerAdmin = GetUserAdmin(client);
+	
+	if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+	{
+		for (int i = 0; i < lines; i++)
+		{
+			if (StrContains(cvarValue, BadNames[i], false) != -1)
+			{
+				int bantime = GetConVarInt(changename_bantime);
+	                
+				if (bantime == -2) 
 				{
-					LogToFile(LOGPATH, "%s %s's Steam name was not restored despite \"sm_cname_enable\" set to 0, because their Steam name is banned.", LOGTAG, client);
+					PrintToChat(client, "%s%s %sThe ability to change names has now been disabled. Your Steam name was not restored, because it is banned on this server.", CTAG, TAG, CUSAGE);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s %s's Steam name was not restored despite \"sm_cname_enable\" set to 0, because their Steam name is banned.", LOGTAG, client);
+					}
 				}
-            }
-            
-            // name is naughty so we do not proceed further.
-            return;
-        }
-    }
+	            
+				// name is naughty so we do not proceed further.
+				return;
+			}
+		}
+	}
     
     // steam name has passed the naughty check, now we can change it.
 	if (!strcmp(name, cvarValue))
@@ -1283,8 +1642,8 @@ public void ChangeNameToSteamNameRenameDisabled(QueryCookie cookie, int client, 
 		}
 	}
     
-    // as we have used a Plugin return above, must use one at the end to avoid compiler warning.
-    return;
+	// as we have used a Plugin return above, must use one at the end to avoid compiler warning.
+	return;
 } 
 
 public void ChangeNameToSteamNamePluginDisabled(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue)
@@ -1293,18 +1652,18 @@ public void ChangeNameToSteamNamePluginDisabled(QueryCookie cookie, int client, 
 	
 	GetClientName(client, name, sizeof(name));	
 			
-    if (client < 1 || client > MaxClients || !IsClientInGame(client))
-        return;
+	if (client < 1 || client > MaxClients || !IsClientInGame(client))
+		return;
 
-    if (result != ConVarQuery_Okay)
-    {
-        PrintToChat(client, "%s%s %sThis plugin has now been disabled. However, your Steam name could not be retrieved and restored.", CTAG, TAG, CERROR);
+	if (result != ConVarQuery_Okay)
+	{
+		PrintToChat(client, "%s%s %sThis plugin has now been disabled. However, your Steam name could not be retrieved and restored.", CTAG, TAG, CERROR);
 		if (GetConVarBool(changename_debug))
 		{
 			LogToFile(LOGPATH, "%s %s's Steam name not retrieved and restored. Plugin disabled.", LOGTAG, client);
 		}
-        return;
-    }
+		return;
+	}
 	
 	if (!strcmp(name, cvarValue))
 	{
@@ -1321,7 +1680,49 @@ public void ChangeNameToSteamNamePluginDisabled(QueryCookie cookie, int client, 
 	}
     
     // as we have used a Plugin return above, must use one at the end to avoid compiler warning.
-    return;
+	return;
+} 
+
+public void ChangeNameToSteamNameIdBanned(QueryCookie cookie, int client, ConVarQueryResult result, const char[] cvarName, const char[] cvarValue)
+{
+	char name[MAX_NAME_LENGTH];
+	
+	GetClientName(client, name, sizeof(name));	
+			
+	if (client < 1 || client > MaxClients || !IsClientInGame(client))
+		return;
+		
+	AdminId playerAdmin = GetUserAdmin(client);
+	
+	if(!GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+	{
+		if (result != ConVarQuery_Okay)
+		{
+			PrintToChat(client, "%s%s %sAn active name ban has been detected. However, your Steam name could not be retrieved and restored.", CTAG, TAG, CERROR);
+			if (GetConVarBool(changename_debug))
+			{
+				LogToFile(LOGPATH, "%s %s's Steam name not retrieved and restored. Active SteamID name ban.", LOGTAG, client);
+			}
+			return;
+		}
+		
+		if (!strcmp(name, cvarValue))
+		{
+			return;
+		}
+		else
+		{
+			SetClientInfo(client, "name", cvarValue);
+			PrintToChat(client, "%s%s %sAn active name ban has been detected. Restoring your Steam name...", CTAG, TAG, CUSAGE);
+			if (GetConVarBool(changename_debug))
+			{
+				LogToFile(LOGPATH, "%s %s's Steam name restored due to SteamID name ban.", LOGTAG, client);
+			}
+		}
+	}
+    
+    // as we have used a Plugin return above, must use one at the end to avoid compiler warning.
+	return;
 } 
 
 public void OnConVarChanged_Debug(ConVar convar, const char[] oldValue, const char[] newValue)
@@ -1704,7 +2105,7 @@ public void OnConVarChanged_Srname(ConVar convar, const char[] oldValue, const c
 					PrintToServer("%s Steam name reset ability is now enabled.", TAG);
 					if (GetConVarBool(changename_debug))
 					{
-						LogToFile(LOGPATH, "%s %s Steam name reset ability is now enabled.", LOGTAG);
+						LogToFile(LOGPATH, "%s Steam name reset ability is now enabled.", LOGTAG);
 					}
 				}
 				else if (IsClientInGame(x) && GetAdminFlag(GetUserAdmin(x), Admin_Root))
@@ -1741,10 +2142,133 @@ public void OnConVarChanged_Srname(ConVar convar, const char[] oldValue, const c
 	}
 }
 
+public void OnConVarChanged_NameCheck(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	for (int x = 0; x <= MaxClients; x++)
+	{
+		if (strcmp(oldValue, newValue) != 0)
+		{
+			if (strcmp(newValue, "1") == 0)
+			{	
+				if (x == 0)
+				{
+					PrintToServer("%s Names will now be checked against banned_names.ini.", TAG);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s Checking for banned names enabled.", LOGTAG);
+					}
+				}
+				else if (IsClientInGame(x))
+				{
+					if (GetAdminFlag(GetUserAdmin(x), Admin_Root))
+					{
+						if (GetConVarBool(changename_debug))
+						{
+						char xbuffer[128];
+						Format(xbuffer, sizeof(xbuffer), "%s%s Checking for banned names enabled. Reading banned_names.ini", CLOGTAG, LOGTAG);
+						PrintToChat(x, xbuffer);
+						}
+						return;
+					}
+					
+					char playerName[64];
+					GetClientName(x, playerName, sizeof(playerName));
+					NameCheck(playerName, x);
+				}
+			} 
+			else if (strcmp(newValue, "0") == 0)
+			{
+				if (x == 0)
+				{
+					PrintToServer("%s Names will no longer be checked against banned_names.ini.", TAG);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s Checking for banned names disabled.", LOGTAG);
+					}
+				}
+				else if (IsClientInGame(x) && GetAdminFlag(GetUserAdmin(x), Admin_Root))
+				{
+					if (GetConVarBool(changename_debug))
+					{
+						char cbuffer[128];
+						Format(cbuffer, sizeof(cbuffer), "%s%s No longer checking for banned names.", CLOGTAG, LOGTAG);
+						PrintToChat(x, cbuffer);
+					}
+				}
+			}
+		}
+	}
+}
+
+public void OnConVarChanged_IdCheck(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	for (int x = 0; x <= MaxClients; x++)
+	{
+		if (strcmp(oldValue, newValue) != 0)
+		{
+			if (strcmp(newValue, "1") == 0)
+			{	
+				if (x == 0)
+				{
+					PrintToServer("%s SteamIDs will now be checked against banned_id.ini.", TAG);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s Checking for banned SteamIDs enabled.", LOGTAG);
+					}
+				}
+				else if (IsClientInGame(x))
+				{
+					if (GetAdminFlag(GetUserAdmin(x), Admin_Root))
+					{
+						if (GetConVarBool(changename_debug))
+						{
+						char xbuffer[128];
+						Format(xbuffer, sizeof(xbuffer), "%s%s Checking for banned SteamIDs enabled. Reading banned_id.ini", CLOGTAG, LOGTAG);
+						PrintToChat(x, xbuffer);
+						}
+						return;
+					}
+					
+					char playerId[64];
+					char playerName[64];
+					GetClientName(x, playerName, sizeof(playerName));
+					GetClientAuthId(x, AuthId_Steam2, playerId, 64);
+					for (int i = 0; i < bannedlines; i++)
+					{
+						if (StrContains(playerId, bannedsteamids[i], false) != -1)
+						{
+							QueryClientConVar(x, "name", ChangeNameToSteamNameIdBanned);
+						}
+					}
+				}
+			} 
+			else if (strcmp(newValue, "0") == 0)
+			{
+				if (x == 0)
+				{
+					PrintToServer("%s SteamIDs will no longer be checked against banned_id.ini.", TAG);
+					if (GetConVarBool(changename_debug))
+					{
+						LogToFile(LOGPATH, "%s Checking for banned SteamIDs disabled.", LOGTAG);
+					}
+				}
+				else if (IsClientInGame(x) && GetAdminFlag(GetUserAdmin(x), Admin_Root))
+				{
+					if (GetConVarBool(changename_debug))
+					{
+						char cbuffer[128];
+						Format(cbuffer, sizeof(cbuffer), "%s%s No longer checking for SteamIDs names.", CLOGTAG, LOGTAG);
+						PrintToChat(x, cbuffer);
+					}
+				}
+			}
+		}
+	}
+}
 /******************************
 PLUGIN FUNCTIONS
 ******************************/
-void Debug_Path()
+void Debug_Path() //Sets the debug log path
 {
 	//Setting up the directory for the log file
 	char sPath[PLATFORM_MAX_PATH];
@@ -1761,6 +2285,67 @@ void ConVarCheck()
 	CreateTimer(15.0, ConVarChecker_Callback, _, TIMER_REPEAT);
 }
 
+void parseList_Name(bool rebuild, int client = 0)
+{
+	char arg1[32];
+	File hFile = OpenFile(fileName, "a+");
+	LogMessage("Begin parseList_Name()");
+    
+	if (hFile == INVALID_HANDLE)
+	{
+		PrintToServer("Stopped");
+		return;
+	}
+
+	while(!hFile.EndOfFile() && hFile.ReadLine(arg1, sizeof(arg1)))
+	{
+		TrimString(arg1);
+		StripQuotes(arg1);
+
+		if(strlen(arg1) < 1) continue;
+
+		if(StrContains(arg1, "STEAM_", false) != -1)
+		{
+			g_bannednames.SetString(arg1, arg1, true);
+			LogMessage("Done", arg1);
+		}
+	}
+
+	LogMessage("End parseList_Name()");
+	if(rebuild && client) PrintToChat(client, "Done");
+	delete hFile;
+}
+
+void parseList_id(bool rebuild, int client = 0)
+{
+    char arg1[32];
+    File nFile = OpenFile(bannedidfile, "a+");
+    LogMessage("Begin parseList_id()");
+    
+    if (nFile == INVALID_HANDLE)
+    {
+   		PrintToServer("Stopped");
+   		return;
+  	}
+
+    while(!nFile.EndOfFile() && nFile.ReadLine(arg1, sizeof(arg1)))
+    {
+        TrimString(arg1);
+        StripQuotes(arg1);
+
+        if(strlen(arg1) < 1) continue;
+
+        if(StrContains(arg1, "STEAM_", false) != -1)
+        {
+            g_bannedids.SetString(arg1, arg1, true);
+            LogMessage("Done", arg1);
+        }
+    }
+
+    LogMessage("End parseList_id()");
+    if(rebuild && client) PrintToChat(client, "Done");
+    delete nFile;
+}
 //PETER BREV, SIGNING OFF
 
 /*************************************************************************************************************************************************************
@@ -1770,3 +2355,4 @@ void ConVarCheck()
 **************************************************************************************************************************************************************
 **************************************************************************************************************************************************************
 **************************************************************************************************************************************************************/
+
