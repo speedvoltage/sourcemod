@@ -1181,7 +1181,7 @@ public Action Command_Rename(int client, int args)
 		{
 			if (target_count > 1)
 			{
-				PrintToChat(client, "%s%s %sMore than one player cannot be renamed at a time.", CTAG, TAG, CUSAGE);
+				PrintToChat(client, "%s%s %sOnly one player at a time can be renamed.", CTAG, TAG, CUSAGE);
 				return Plugin_Handled;
 			}
 			PrintToChatAll("%s%s %s%s %shas been renamed by an admin to %s%s%s.", CTAG, TAG, CPLAYER, target_name, CUSAGE, CPLAYER, arg2, CUSAGE);
