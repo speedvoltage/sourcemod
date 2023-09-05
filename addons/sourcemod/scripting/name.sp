@@ -88,6 +88,7 @@ PLUGIN INTEGERS
 ******************************/
 
 int g_iLastUsed[MAXPLAYERS+1];
+int g_renamed[MAXPLAYERS+1];
 
 /******************************
 PLUGIN STRINGS
@@ -181,7 +182,7 @@ public void OnPluginStart()
 	changename_cooldown = CreateConVar("sm_name_cooldown", "30", "Time before letting players change their name again.", FCVAR_NOTIFY);
 	changename_checkbadnames = CreateConVar("sm_name_bannednames_checker", "1", "Controls whether banned names should be filtered.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	changename_checkbannedids = CreateConVar("sm_name_bannedids_checker", "1", "Controls whether banned Steam IDs should be checked.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	changename_adminrename_cooldown = CreateConVar("sm_rename_cooldown", "30", "Controls how long a player needs to wait before changing their name again after an admin renamed them.", FCVAR_NOTIFY);
+	changename_adminrename_cooldown = CreateConVar("sm_rename_cooldown", "60", "Controls how long a player needs to wait before changing their name again after an admin renamed them.", FCVAR_NOTIFY);
 	
 	//Technical
 	changename_debug = CreateConVar("sm_name_debug", "0", "Toggles logging for debugging purposes (Only use this if you are experiencing weird issues)", 0, true, 0.0, true, 1.0); //Allows us to debug in case of an issue with the plugin
@@ -267,7 +268,6 @@ public Action Event_TeamChange(Event e, char[] sName, bool bBroadcast)
     // in all other cases, the event proceeds as normal.
     return Plugin_Continue;
 }
-
 public Action ConVarChecker_Callback(Handle timer, any data)
 {
 	if (!GetConVarBool(changename_enable) && !GetConVarBool(originalname_enable) && !GetConVarBool(steamname_enable) && !GetConVarBool(changename_steamreset))
@@ -686,7 +686,7 @@ void RenameCheck(char getsteamid[64], char client)
 	
 	ReplaceString(getsteamid, 64, " ", "");
 	
-	for (int i = 0; i < adminrenamedlines; i++)
+	/*for (int i = 0; i < adminrenamedlines; i++)
 	{
 		if (StrContains(getsteamid, adminrenamedid[i], false) != -1)
 		{
@@ -696,7 +696,7 @@ void RenameCheck(char getsteamid[64], char client)
 				LogToFile(LOGPATH, "%s %s attempted to change their name, but cannot due to having been renamed by an admin.", LOGTAG, client);
 			}
 		}
-	}
+	}*/
 	return;
 }
 
@@ -1112,7 +1112,6 @@ public Action Command_NameUnban(int client, int args)
 		return Plugin_Handled;
 	}
 }
-
 public Action Command_FilesRefresh(int client, int args)
 {
 	if (!client)
@@ -1181,12 +1180,12 @@ public Action Command_Rename(int client, int args)
 		{
 			if (target_count > 1)
 			{
-				PrintToChat(client, "%s%s %sOnly one player at a time can be renamed.", CTAG, TAG, CUSAGE);
+				PrintToChat(client, "%s%s %sMore than one player cannot be renamed at a time.", CTAG, TAG, CUSAGE);
 				return Plugin_Handled;
 			}
 			PrintToChatAll("%s%s %s%s %shas been renamed by an admin to %s%s%s.", CTAG, TAG, CPLAYER, target_name, CUSAGE, CPLAYER, arg2, CUSAGE);
 			Format(g_targetnewname[target_list[i]], MAX_NAME_LENGTH, "%s", arg2);
-			RenamePlayer(client, target_list[i]);
+			RenamePlayer(target_list[i]);
 			
 			if (GetConVarBool(changename_debug))
 			{
@@ -1202,7 +1201,7 @@ public Action Command_Rename(int client, int args)
 	return Plugin_Handled;
 }
 
-void RenamePlayer(int client, int target)
+void RenamePlayer(int target)
 {	
 	SetClientName(target, g_targetnewname[target]);
 	g_targetnewname[target][0] = '\0';
@@ -1215,22 +1214,31 @@ void RenamePlayer(int client, int target)
 	{
 		if (StrContains(buffer, adminrenamedid[i], false) != -1)
 		{
-			PrintToChat(client, "%s%s %sPlayer already registered.", CTAG, TAG, CUSAGE);
 			return;
 		}
 	}
 	WriteFileLine(nfile, buffer);
-	PrintToChat(client, "String written");
-	
+
+	int timeleft = GetConVarInt(changename_adminrename_cooldown);
+	int mins, secs;
+	if (timeleft > 0)
+	{
+		mins = timeleft / 60;
+		secs = timeleft % 60;
+		PrintToChat(target, "%s%s %sAn admin has renamed you. You have been temporarily banned from changing names for %s%d:%02d%s.", CTAG, TAG, CUSAGE, CPLAYER, mins, secs, CUSAGE);
+		CheckTimer(target);
+	}
+
 	Handle DP = CreateDataPack();
 	WritePackString(DP, buffer);
+	WritePackCell(DP, target);
 	CreateTimer(GetConVarFloat(changename_adminrename_cooldown), name_temp_ban, DP);
 
 	CloseHandle(nfile);
 	OnMapStart();
 	if (GetConVarBool(changename_debug))
 	{
-		LogToFile(LOGPATH, "%s %s has been registered.", LOGTAG, target);
+		LogToFile(LOGPATH, "%s %s temporarily banned from changing names.", LOGTAG, target);
 	}
 	return;
 		
@@ -1274,7 +1282,6 @@ public Action name_temp_ban(Handle timer, any DP)
 				LogToFile(LOGPATH,"%s %s removed from temporary banned names list.", TAG, buffer);
 			}
 		}
-		
 		delete newFile;
 		delete fileArray;
 		OnMapStart();
@@ -1373,9 +1380,30 @@ public Action Command_Oname(int client, int args)
 	}
 	return Plugin_Handled;	
 }
-
-public Action Command_Name(int client, int args)
+void CheckTimer(int client)
 {
+	
+	int iNow = GetTime(), iCooldown = GetConVarInt(changename_adminrename_cooldown);
+	
+	if(iCooldown > 0)
+	{
+		int iTimeLeft = g_iLastUsed[client] + iCooldown - iNow;
+		int mins, secs;
+		if (iTimeLeft > 0)
+		{
+			mins = iTimeLeft / 60;
+			secs = iTimeLeft % 60;
+			//char timeleftbuffer[128];
+			PrintToChat(client, "%s%s %sAn admin recently renamed you. You will only be able to change your name in %s%d:%02d%s.", CTAG, TAG, CUSAGE, CPLAYER, mins, secs, CUSAGE);
+			return;
+		}
+	}
+			
+	g_iLastUsed[client] = iNow;		
+	
+}
+public Action Command_Name(int client, int args)
+{	
 	gB_HideNameChange = true;
 	
 	//Check whether the plugin is enabled
@@ -1430,7 +1458,7 @@ public Action Command_Name(int client, int args)
 	AdminId playerAdmin = GetUserAdmin(client);
 	
 	if (args == 0)
-	{
+	{		
 		char id[32], buffer[MAX_NAME_LENGTH], currentname[MAX_NAME_LENGTH];
 		
 		GetClientAuthId(client, AuthId_Steam2, id, sizeof(id));
@@ -1462,6 +1490,22 @@ public Action Command_Name(int client, int args)
 								return Plugin_Handled;
 							}
 						}				
+					}
+				}
+			}
+			
+			if(GetAdminFlag(playerAdmin, Admin_Generic, Access_Effective))
+			{
+				for (int z = 0; z < adminrenamedlines; z++)
+				{					
+					if (StrContains(id, adminrenamedid[z], false) != -1)
+					{
+						CheckTimer(client);
+						if (GetConVarBool(changename_debug))
+						{
+							LogToFile(LOGPATH, "%s %s attempted to change their name, but they have been temporarily suspended from doing so following an admin sm_rename usage.", LOGTAG, client);
+						}
+						return Plugin_Handled;
 					}
 				}
 			}
