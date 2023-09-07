@@ -182,7 +182,7 @@ public void OnPluginStart()
 	changename_cooldown = CreateConVar("sm_name_cooldown", "30", "Time before letting players change their name again.", FCVAR_NOTIFY);
 	changename_checkbadnames = CreateConVar("sm_name_bannednames_checker", "1", "Controls whether banned names should be filtered.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
 	changename_checkbannedids = CreateConVar("sm_name_bannedids_checker", "1", "Controls whether banned Steam IDs should be checked.", FCVAR_NOTIFY, true, 0.0, true, 1.0);
-	changename_adminrename_cooldown = CreateConVar("sm_rename_cooldown", "60", "Controls how long a player needs to wait before changing their name again after an admin renamed them.", FCVAR_NOTIFY);
+	changename_adminrename_cooldown = CreateConVar("sm_rename_cooldown", "600", "Controls how long a player needs to wait before changing their name again after an admin renamed them.", FCVAR_NOTIFY);
 	
 	//Technical
 	changename_debug = CreateConVar("sm_name_debug", "0", "Toggles logging for debugging purposes (Only use this if you are experiencing weird issues)", 0, true, 0.0, true, 1.0); //Allows us to debug in case of an issue with the plugin
