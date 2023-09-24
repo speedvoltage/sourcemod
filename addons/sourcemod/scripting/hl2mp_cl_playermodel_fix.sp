@@ -91,6 +91,7 @@ PLUGIN BOOLEANS
 ******************************/
 
 bool g_bPlayerModel[MAXPLAYERS + 1] =  { true, ... };
+bool g_bShowMessages[MAXPLAYERS + 1] =  { true, ... };
 
 /******************************
 PLUGIN HANDLES
@@ -159,6 +160,12 @@ public void OnPluginStart()
 	
 	/*PUBLIC COMMANDS*/
 	RegConsoleCmd("sm_name_show_playermodel_msg", Command_playermdlmsg, "Display message that player model was adjusted when switching teams");
+	
+	for (int i; i <= MaxClients; i++)
+	{
+		g_bPlayerModel[i] = false;
+		g_bShowMessages[i] = false;
+	}
 }
 
 public void OnLibraryAdded(const char[] sName)
@@ -314,6 +321,7 @@ public Action Command_playermdlmsg(int client, int args)
 				}
 				PrintToChat(client, "Player model adjusted messages now showing.");
 				g_bPlayerModel[client] = true;
+				g_bShowMessages[client] = true;
 				return Plugin_Handled;
 			}
 			
@@ -326,6 +334,7 @@ public Action Command_playermdlmsg(int client, int args)
 				}
 				PrintToChat(client, "Player model adjusted messages now suppressed.");
 				g_bPlayerModel[client] = false;
+				g_bShowMessages[client] = false;
 				return Plugin_Handled;
 			}
 			
@@ -361,6 +370,23 @@ public Action dfltmsg(UserMsg msg, Handle hMsg, const int[] iPlayers, int iNumPl
 	}
 	
 	return Plugin_Continue;
+}
+
+public void OnClientSettingsChanged(int client)
+{
+	if (g_bShowMessages[client])
+	{
+		if (!IsClientConnected(client))
+			return;
+		
+		if (IsFakeClient(client))
+			return;
+		
+		char sNewModel[75];
+		GetClientModel(client, sNewModel, sizeof(sNewModel));
+		PrintToChat(client, "Player model set to: %s", sNewModel);
+		return;
+	}
 }
 
 public void OnConVarChanged_pModelFix(ConVar convar, const char[] oldValue, const char[] newValue)
