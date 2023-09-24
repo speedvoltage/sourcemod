@@ -144,6 +144,8 @@ public void OnPluginStart()
 	HookUserMessage(GetUserMessageId("TextMsg"), dfltmsg, true); // To get rid of default engine messages
 	
 	/*CONVARS*/
+	CreateConVar("sm_name_playermodel_version", PLUGIN_VERSION, "Connect Status Plugin Version");
+
 	changename_playermodelmsg = CreateConVar("sm_name_playermodel_msg", "1", "Shows message that player model was adjusted based on team", FCVAR_SPONLY | FCVAR_ARCHIVE | FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	g_hTeamHook = CreateConVar("sm_playermodel_fix", "1", "Enable/Disable plugin fix", FCVAR_SPONLY | FCVAR_ARCHIVE | FCVAR_DONTRECORD, true, 0.0, true, 1.0);
 	
