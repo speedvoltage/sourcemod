@@ -146,8 +146,8 @@ public void OnPluginStart()
 	/*CONVARS*/
 	CreateConVar("sm_name_playermodel_version", PLUGIN_VERSION, "Connect Status Plugin Version");
 	
-	changename_playermodelmsg = CreateConVar("sm_name_playermodel_msg", "1", "Shows message that player model was adjusted based on team", FCVAR_SPONLY | FCVAR_ARCHIVE | FCVAR_DONTRECORD, true, 0.0, true, 1.0);
-	g_hTeamHook = CreateConVar("sm_playermodel_fix", "1", "Enable/Disable plugin fix", FCVAR_SPONLY | FCVAR_ARCHIVE | FCVAR_DONTRECORD, true, 0.0, true, 1.0);
+	changename_playermodelmsg = CreateConVar("sm_name_playermodel_msg", "1", "Shows message that player model was adjusted based on team", 0, true, 0.0, true, 1.0);
+	g_hTeamHook = CreateConVar("sm_playermodel_fix", "1", "Enable/Disable plugin fix", 0, true, 0.0, true, 1.0);
 	
 	AutoExecConfig(true, "hl2mp_playermodel_fix");
 	
@@ -221,7 +221,7 @@ public Action changeteamtimer(Handle timer, DataPack pack)
 		}
 		PrintToChatAll("%s%N \x01has joined team: %sRebels", REBELS, client, REBELS);
 		
-		LogAction(client, -1, "%N has changed teams (%s). Client's cl_playermodel parameter adjusted to reflect new team.", client, REBELS);
+		LogAction(client, -1, "%N has changed teams (Rebels). Client's cl_playermodel parameter adjusted to reflect new team.", client);
 		
 		if (silent == 1 || auto == 1)
 		{
@@ -246,7 +246,7 @@ public Action changeteamtimer(Handle timer, DataPack pack)
 		}
 		PrintToChatAll("%s%N \x01has joined team: %sCombine", COMBINE, client, COMBINE);
 		
-		LogAction(client, -1, "%N has changed teams (%s). Client's cl_playermodel parameter adjusted to reflect new team.", client, COMBINE);
+		LogAction(client, -1, "%N has changed teams (Combine). Client's cl_playermodel parameter adjusted to reflect new team.", client);
 		
 		if (silent == 1 || auto == 1)
 		{
@@ -262,7 +262,7 @@ public Action changeteamtimer(Handle timer, DataPack pack)
 		
 		PrintToChatAll("%s%N \x01has joined team: %sSpectators", SPEC, client, SPEC);
 		
-		LogAction(client, -1, "%N has changed teams (%s). Client's cl_playermodel parameter adjusted to reflect new team.", client, SPEC);
+		LogAction(client, -1, "%N has changed teams (Spectators). Client's cl_playermodel parameter adjusted to reflect new team.", client);
 		
 		if (silent == 1 || auto == 1)
 		{
@@ -278,7 +278,7 @@ public Action changeteamtimer(Handle timer, DataPack pack)
 		
 		PrintToChatAll("%s%N \x01has joined team: %sPlayers", UNASSIGNED, client, UNASSIGNED);
 		
-		LogAction(client, -1, "%N has changed teams (%s). Client's cl_playermodel parameter adjusted to reflect new team.", client, UNASSIGNED);
+		LogAction(client, -1, "%N has changed teams (Players). Client's cl_playermodel parameter adjusted to reflect new team.", client);
 		
 		if (silent == 1 || auto == 1)
 		{
