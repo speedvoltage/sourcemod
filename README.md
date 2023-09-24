@@ -1,2 +1,2 @@
-# sourcemod
-Sourcemod plugins created for Half-Life 2: Deathmatch. There is no guarantee they will work in other games, although there is no reason for them not to.
+# My Sourcemod Plugins
+Some may be game specific. They are usually marked within the file name. If there is no game name in the plugin file name, then it can be used for any games.
