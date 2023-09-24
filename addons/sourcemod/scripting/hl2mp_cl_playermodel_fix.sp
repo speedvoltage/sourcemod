@@ -145,7 +145,7 @@ public void OnPluginStart()
 	HookUserMessage(GetUserMessageId("TextMsg"), dfltmsg, true); // To get rid of default engine messages
 	
 	/*CONVARS*/
-	CreateConVar("sm_name_playermodel_version", PLUGIN_VERSION, "Connect Status Plugin Version");
+	CreateConVar("sm_name_playermodel_version", PLUGIN_VERSION, "Connect Status Plugin Version", FCVAR_DONTRECORD | FCVAR_SPONLY | FCVAR_ARCHIVE);
 	
 	changename_playermodelmsg = CreateConVar("sm_name_playermodel_msg", "1", "Shows message that player model was adjusted based on team", 0, true, 0.0, true, 1.0);
 	g_hTeamHook = CreateConVar("sm_playermodel_fix", "1", "Enable/Disable plugin fix", 0, true, 0.0, true, 1.0);
@@ -319,7 +319,7 @@ public Action Command_playermdlmsg(int client, int args)
 					PrintToChat(client, "Messages are already showing.");
 					return Plugin_Handled;
 				}
-				PrintToChat(client, "Player model adjusted messages now showing.");
+				PrintToChat(client, "Player model adjusted messages showing.");
 				g_bPlayerModel[client] = true;
 				g_bShowMessages[client] = true;
 				return Plugin_Handled;
@@ -332,7 +332,7 @@ public Action Command_playermdlmsg(int client, int args)
 					PrintToChat(client, "Messages are already suppressed.");
 					return Plugin_Handled;
 				}
-				PrintToChat(client, "Player model adjusted messages now suppressed.");
+				PrintToChat(client, "Player model adjusted messages suppressed.");
 				g_bPlayerModel[client] = false;
 				g_bShowMessages[client] = false;
 				return Plugin_Handled;
