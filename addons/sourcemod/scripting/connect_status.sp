@@ -39,7 +39,6 @@ PLUGIN HANDLES
 ******************************/
 
 ConVar g_cEnable;
-ConVar g_cTeamplay;
 
 /******************************
 PLUGIN INFO
@@ -78,8 +77,6 @@ public void OnPluginStart()
 	CreateConVar("sm_connect_status_version", PLUGIN_VERSION, "Connect Status Plugin Version");
 	
 	g_cEnable = CreateConVar("sm_connect_status_enable", "1", "Determines if the plugin is enabled", 0, true, 0.0, true, 1.0);
-	
-	g_cTeamplay = FindConVar("mp_teamplay");
 	
 	AutoExecConfig(true, "connect_status");
 	
@@ -129,8 +126,9 @@ public bool OnClientConnect(int client)
 
 public void OnClientPutInServer(int client)
 {
-	int teamplay = GetConVarInt(g_cTeamplay);
-	if (teamplay == 0)
+	int c_Teamplay;
+	c_Teamplay = GetConVarInt(FindConVar("mp_teamplay"));
+	if (c_Teamplay == 0)
 	{
 		PrintToChatAll("\x04%N \x01is connected.", client);
 		return;
