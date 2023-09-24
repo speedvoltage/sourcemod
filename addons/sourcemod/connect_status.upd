@@ -1,0 +1,16 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.0.0"
+		}
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/connect_status.smx"
+		"Source"	"Path_SM/scripting/connect_status.sp"
+	}
+}
