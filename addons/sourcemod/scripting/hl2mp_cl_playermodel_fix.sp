@@ -138,7 +138,7 @@ public void OnPluginStart()
 		PrecacheModel(ModelsHuman[i]);
 	}
 	
-	/*HOOKS*/
+	/*HOOKING EVENTS*/
 	HookEvent("player_team", playerteam_callback, EventHookMode_Pre); // To fix death when names get changed through SM commands
 	
 	HookUserMessage(GetUserMessageId("TextMsg"), dfltmsg, true); // To get rid of default engine messages
