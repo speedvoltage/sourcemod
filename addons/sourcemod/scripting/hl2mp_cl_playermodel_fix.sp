@@ -372,23 +372,6 @@ public Action dfltmsg(UserMsg msg, Handle hMsg, const int[] iPlayers, int iNumPl
 	return Plugin_Continue;
 }
 
-public void OnClientSettingsChanged(int client)
-{
-	if (g_bShowMessages[client])
-	{
-		if (!IsClientConnected(client))
-			return;
-		
-		if (IsFakeClient(client))
-			return;
-		
-		char sNewModel[75];
-		GetClientModel(client, sNewModel, sizeof(sNewModel));
-		PrintToChat(client, "Player model set to: %s", sNewModel);
-		return;
-	}
-}
-
 public void OnConVarChanged_pModelFix(ConVar convar, const char[] oldValue, const char[] newValue)
 {
 	for (int x = 0; x <= MaxClients; x++)
