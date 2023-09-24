@@ -1,0 +1,16 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.0.0"
+		}
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/hl2mp_cl_playermodel_fix.smx"
+		"Source"	"Path_SM/scripting/hl2mp_cl_playermodel_fix.sp"
+	}
+}
