@@ -1,8 +1,4 @@
 /******************************
-INCLUDE THIS FILE IN YOUR PLUGIN TO HANDLE PLAYERMODELS ANY TIME A PLAYER CHANGES TEAMS IN HL2DM
-******************************/
-
-/******************************
 INCLUDE ALL THE NECESSARY FILES
 ******************************/
 
