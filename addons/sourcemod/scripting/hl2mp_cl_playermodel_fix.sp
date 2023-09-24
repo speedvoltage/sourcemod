@@ -159,7 +159,7 @@ public void OnPluginStart()
 	else PrintToServer("[HL2MP] Playermodel fix disabled.");
 	
 	/*PUBLIC COMMANDS*/
-	RegConsoleCmd("sm_name_show_playermodel_msg", Command_playermdlmsg, "Display message that player model was adjusted when switching teams");
+	RegConsoleCmd("sm_show_playermodel_msg", Command_playermdlmsg, "Display message that player model was adjusted when switching teams");
 	
 	for (int i; i <= MaxClients; i++)
 	{
