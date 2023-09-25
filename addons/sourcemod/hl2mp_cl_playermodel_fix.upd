@@ -4,8 +4,14 @@
 	{
 		"Version"
 		{
-			"Latest"	"1.0.0"
+			"Latest"	"1.0.1"
 		}
+
+		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?t=344023 - Changes in 1.0.1:"
+		"Notes"	"Cvar name changed -> sm_playermodel_fix_version"
+		"Notes"	"Cvar name changed -> sm_show_playermodel_msg"
+		"Notes"	"Public command name changed -> sm_show_playermodel_msg"
+		"Notes"	"Fixed sm_show_playermodel_msg if condition"
 	}
 
 	"Files"
