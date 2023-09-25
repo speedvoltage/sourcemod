@@ -24,7 +24,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"HL2MP - Playermodel Fix"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.0.0"
+#define PLUGIN_VERSION							"1.0.1"
 #define PLUGIN_DESCRIPTION						"Adjusts players cl_playermodel setting to match their team"
 #define PLUGIN_URL								"N/A"
 
@@ -145,9 +145,9 @@ public void OnPluginStart()
 	HookUserMessage(GetUserMessageId("TextMsg"), dfltmsg, true); // To get rid of default engine messages
 	
 	/*CONVARS*/
-	CreateConVar("sm_name_playermodel_version", PLUGIN_VERSION, "Connect Status Plugin Version", FCVAR_DONTRECORD | FCVAR_SPONLY | FCVAR_ARCHIVE);
+	CreateConVar("sm_playermodel_fix_version", PLUGIN_VERSION, "Connect Status Plugin Version", FCVAR_DONTRECORD | FCVAR_SPONLY | FCVAR_ARCHIVE);
 	
-	changename_playermodelmsg = CreateConVar("sm_name_playermodel_msg", "1", "Shows message that player model was adjusted based on team", 0, true, 0.0, true, 1.0);
+	changename_playermodelmsg = CreateConVar("sm_show_playermodel_msg", "1", "Shows message that player model was adjusted based on team", 0, true, 0.0, true, 1.0);
 	g_hTeamHook = CreateConVar("sm_playermodel_fix", "1", "Enable/Disable plugin fix", 0, true, 0.0, true, 1.0);
 	
 	AutoExecConfig(true, "hl2mp_playermodel_fix");
@@ -302,9 +302,9 @@ public Action Command_playermdlmsg(int client, int args)
 	{
 		if (GetConVarBool(changename_playermodelmsg))
 		{
-			if (!args || args > 2)
+			if (!args || args > 1)
 			{
-				PrintToChat(client, "Usage: \x04sm_name_show_playermodel_msg <0|1>");
+				PrintToChat(client, "Usage: \x04sm_show_playermodel_msg <0|1>");
 				return Plugin_Handled;
 			}
 			
