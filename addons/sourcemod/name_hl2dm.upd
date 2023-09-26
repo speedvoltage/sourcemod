@@ -11,6 +11,7 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_hl2dm.smx"
+		"Plugin"	"Path_SM/plugins/name_hl2dm.upd"
 		"Source"	"Path_SM/scripting/name_hl2dm.sp"
 	}
 }
