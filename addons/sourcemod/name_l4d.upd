@@ -11,6 +11,7 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_l4d.smx"
+		"Plugin"	"Path_SM/plugins/name_l4d.upd"
 		"Source"	"Path_SM/scripting/name_l4d.sp"
 	}
 }
