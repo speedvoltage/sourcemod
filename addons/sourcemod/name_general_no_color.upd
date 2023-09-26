@@ -1,0 +1,16 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.7.0.1963"
+		}
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/name_general_no_color.smx"
+		"Source"	"Path_SM/scripting/name_general_no_color.sp"
+	}
+}

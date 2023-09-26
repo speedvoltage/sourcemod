@@ -1,0 +1,16 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.7.0.1963"
+		}
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/name_csgo.smx"
+		"Source"	"Path_SM/scripting/name_csgo.sp"
+	}
+}
