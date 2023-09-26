@@ -11,6 +11,7 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_csgo.smx"
+		"Plugin"	"Path_SM/plugins/name_csgo.upd"
 		"Source"	"Path_SM/scripting/name_csgo.sp"
 	}
 }
