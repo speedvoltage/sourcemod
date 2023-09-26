@@ -11,6 +11,7 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_general_no_color.smx"
+		"Plugin"	"Path_SM/plugins/name_general_no_color.upd"
 		"Source"	"Path_SM/scripting/name_general_no_color.sp"
 	}
 }
