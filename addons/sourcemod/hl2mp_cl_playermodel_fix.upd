@@ -13,6 +13,7 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/hl2mp_cl_playermodel_fix.smx"
+		"Plugin"	"Path_Mod/cfg/sourcemod/hl2mp_playermodel_fix.cfg"
 		"Source"	"Path_SM/scripting/hl2mp_cl_playermodel_fix.sp"
 	}
 }
