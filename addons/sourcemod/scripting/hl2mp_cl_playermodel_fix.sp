@@ -298,6 +298,9 @@ public Action changeteamtimer(Handle timer, DataPack pack)
 
 public Action Command_playermdlmsg(int client, int args)
 {
+	if (!client || IsFakeClient(client))
+		return Plugin_Handled;
+	
 	if (GetConVarBool(g_hTeamHook))
 	{
 		if (GetConVarBool(changename_playermodelmsg))
