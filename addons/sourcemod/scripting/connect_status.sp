@@ -18,7 +18,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"HL2MP - Connect Status"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.0.0"
+#define PLUGIN_VERSION							"1.0.1"
 #define PLUGIN_DESCRIPTION						"Formats better looking connecting and disconnect players messages"
 #define PLUGIN_URL								"N/A"
 
@@ -35,10 +35,11 @@ PLUGIN STRINGS
 char g_sDisconnectReason[64];
 
 /******************************
-PLUGIN HANDLES
+PLUGIN CONVARS
 ******************************/
 
 ConVar g_cEnable;
+ConVar g_cTeamplay;
 
 /******************************
 PLUGIN INFO
@@ -77,6 +78,10 @@ public void OnPluginStart()
 	CreateConVar("sm_connect_status_version", PLUGIN_VERSION, "Connect Status Plugin Version");
 	
 	g_cEnable = CreateConVar("sm_connect_status_enable", "1", "Determines if the plugin is enabled", 0, true, 0.0, true, 1.0);
+	g_cTeamplay = FindConVar("mp_teamplay");
+	
+	/*HOOKING CONVARS*/
+	HookConVarChange(g_cTeamplay, OnConVarChanged_Teamplay);
 	
 	AutoExecConfig(true, "connect_status");
 	
@@ -116,7 +121,7 @@ public Action playerconnect_callback(Event event, const char[] name, bool dontBr
 }
 
 public bool OnClientConnect(int client)
-{	
+{
 	if (GetConVarBool(g_cEnable))
 	{
 		PrintToChatAll("\x04%N \x01is connecting...", client);
@@ -139,6 +144,12 @@ public void OnClientDisconnect(int client)
 {
 	if (GetConVarBool(g_cEnable))
 	{
+		if (!IsClientInGame(client))
+		{
+			PrintToChatAll("%s%N \x01has disconnected [\x04%s\x01]", UNASSIGNED, client, g_sDisconnectReason);
+			return;
+		}
+		
 		int team;
 		team = GetClientTeam(client);
 		
@@ -172,4 +183,37 @@ public void OnClientDisconnect(int client)
 			return;
 		}
 	}
+}
+
+public void OnConVarChanged_Teamplay(ConVar convar, const char[] oldValue, const char[] newValue)
+{
+	for (int i; i <= MaxClients; i++)
+	{
+		if (i == 0)
+		{
+			int c_Teamplay;
+			c_Teamplay = GetConVarInt(FindConVar("mp_teamplay"));
+			if (c_Teamplay == 1)
+			{
+				PrintToServer("Teamplay has been enabled. Reloading map...");
+				PrintToChatAll("Teamplay is now enabled.");
+			}
+			
+			else if (c_Teamplay == 0)
+			{
+				PrintToServer("Teamplay has been disabled. Reloading map...");
+				PrintToChatAll("Teamplay is now disabled.");
+			}
+		}
+	}
+	CreateTimer(0.1, TeamplayChanged_Timer);
+	return;
+}
+
+public Action TeamplayChanged_Timer(Handle Timer, any data)
+{
+	char sMap[64];
+	GetCurrentMap(sMap, sizeof(sMap));
+	ForceChangeLevel(sMap, "mp_teamplay changed");
+	return Plugin_Stop;
 } 
