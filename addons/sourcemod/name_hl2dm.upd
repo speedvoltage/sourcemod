@@ -15,7 +15,6 @@
 	"Notes"	"	And more..."
 	"Notes"	"Sourcebans integration."
 	"Notes"	"New command : sm_name_history <#userid|name>. The last 10 names can be displayed to the admin's console. Full name history can be found in Path_SM/Name/<SteamID64.txt>. Due to the file naming convention used by Windows, Steam 2 and 3 IDs cannot be used because of colons."
-	"Notes"	"New command : sm_rename_reset <#userid|name>. Forcibly reset the name of a player back to their join name."
 	"Notes"	"	Sourcemod logs are now used. The custom logging used in previous version was inconvenient."
 	"Notes"	"	Admin menu integration for sm_rename_reset, sm_rename_random, sm_name_history, sm_name_banid."
 	"Notes"	"Removed the following commands (little to no purpose to them):"
