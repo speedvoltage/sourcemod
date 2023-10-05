@@ -45,22 +45,5 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_hl2dm.smx"
-		"Plugin"	"Path_Mod/cfg/sourcemod/sm_name.cfg"
-		"Source"	"Path_SM/scripting/name_hl2dm.sp"
-		"Source"	"Path_SM/scripting/name/name.sp"
-		"Source"	"Path_SM/scripting/name/nameadmin.sp"
-		"Source"	"Path_SM/scripting/name/nameban.sp"
-		"Source"	"Path_SM/scripting/name/namebanid.sp"
-		"Source"	"Path_SM/scripting/name/namecredits.sp"
-		"Source"	"Path_SM/scripting/name/nameforce.sp"
-		"Source"	"Path_SM/scripting/name/namehelp.sp"
-		"Source"	"Path_SM/scripting/name/namehistory.sp"
-		"Source"	"Path_SM/scripting/name/namerefresh.sp"
-		"Source"	"Path_SM/scripting/name/namereset.sp"
-		"Source"	"Path_SM/scripting/name/oname.sp"
-		"Source"	"Path_SM/scripting/name/rename.sp"
-		"Source"	"Path_SM/scripting/name/renamerandom.sp"
-		"Source"	"Path_SM/scripting/name/sname.sp"
-		"Source"	"Path_SM/scripting/name/srname.sp"
 	}
 }
