@@ -369,7 +369,7 @@ public void OnPluginStart()
 	
 	Name_History();
 	
-	AutoExecConfig(true, "name.change");
+	AutoExecConfig(true, "name");
 }
 
 /******************************
