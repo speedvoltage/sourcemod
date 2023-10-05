@@ -45,5 +45,6 @@
 	"Files"
 	{
 		"Plugin"	"Path_SM/plugins/name_hl2dm.smx"
+		"Source"	"Path_SM/scripting/name_hl2dm.sp"
 	}
 }
