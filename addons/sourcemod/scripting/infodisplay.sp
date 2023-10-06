@@ -92,7 +92,8 @@ public Action Command_Info(int client, int args)
 	GetCmdArg(1, arg1, sizeof(arg1));
 	
 	int Target = FindTarget(client, arg1);
-	
+
+	if (Target == -1) return Plugin_Handled;
 	
 	char TargetName[MAX_NAME_LENGTH];
 	char IP[32];
