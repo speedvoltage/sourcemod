@@ -34,7 +34,7 @@
 		"Notes"	" 	sm_name_unforce: sm_rename_unforce"
 		"Notes"	" 	sm_nhelp: sm_name_help"
 		"Notes"	" 	sm_name_reload: sm_name_refresh"
-		"Notes"	"Admins no longer have to wait for an admin rename cooldown on a player to be have elapsed."
+		"Notes"	"Admins no longer have to wait for an admin rename cooldown on a player to have elapsed."
 		"Notes"	"Removed the dependency to the Unix time include. FormatTime() is now used instead."
 		"Notes"	"Colors were stripped as it was too cumbersome to maintain throughout multiple games. This means that only 2 versions are needed instead of 4."
 		"Notes"	"Plugin commands can now be used from the server console for those that make sense."
