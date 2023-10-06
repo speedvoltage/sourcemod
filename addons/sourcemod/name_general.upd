@@ -6,8 +6,7 @@
 		{
 			"Latest"	"1.8.0.1972"
 		}
-	}
-	
+
 	"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?p=2810597 - Changes in 1.8.0.1972:"
 	"Notes"	"Complete code overhaul:"
 	"Notes"	"	Simplified large parts of the code."
@@ -41,6 +40,7 @@
 	"Notes"	"Text messages are now using [SM] as a prefix rather than [NAME] to harmonize with the base Sourcemod plugins."
 	"Notes"	"Fixed an issue where removing banned Steam IDs and/or names through the SM commands could lead to some funky behavior."
 	"Notes"	"Miscellaneous bug fixes."
+	}
 
 	"Files"
 	{
