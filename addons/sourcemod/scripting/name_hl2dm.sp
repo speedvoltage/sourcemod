@@ -61,7 +61,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Change Your Name"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.8.0.1972" /*Build number since 05/12/18*/
+#define PLUGIN_VERSION							"1.8.2.1973" /*Build number since 05/12/18*/
 #define PLUGIN_DESCRIPTION						"Complete plugin allowing name changes for players + administration tools for admins"
 #define PLUGIN_URL								"N/A"
 
@@ -371,7 +371,7 @@ public void OnPluginStart()
 	
 	Name_History();
 	
-	AutoExecConfig(true, "name");
+	AutoExecConfig(true, "sm_name");
 }
 
 /******************************
@@ -512,7 +512,7 @@ public void OnMapStart()
 	for (int i = 1; i < MaxClients; i++)
 	{
 		if (!IsClientInGame(i) || IsFakeClient(i))
-			return;
+			continue;
 		
 		char name[MAX_NAME_LENGTH];
 		GetClientName(i, name, sizeof(name));
@@ -524,6 +524,9 @@ public void OnMapEnd()
 {
 	for (int i = 1; i <= MaxClients; i++)
 	{
+		if (!IsClientInGame(i) || IsFakeClient(i))
+			continue;
+			
 		g_hTimer[i] = null;
 		g_hNameReset[i] = null;
 		g_hNameChange[i] = null;
@@ -653,7 +656,7 @@ void NameCheck(char[] clientName, int player)
 	GetConVarString(changename_banreason, reason, 128);
 	
 	for (int i, num = hBadNames.Length; i < num; i++)
-	{
+	{			
 		if (hBadNames.GetString(i, buffer, sizeof(buffer)) && StrContains(clientName, buffer, false) != -1)
 		{
 			if (FindPluginByFile("sbpp_main.smx"))
@@ -695,7 +698,7 @@ void IdCheck(char getsteamid[64], int player)
 	
 	char buffer[MAX_NAME_LENGTH];
 	for (int i, num = hBannedSteamId.Length; i < num; i++)
-	{
+	{			
 		if (hBannedSteamId.GetString(i, buffer, sizeof(buffer)) && StrContains(getsteamid, buffer, false) != -1)
 		{
 			PrintToChat(player, "[SM] Your Steam ID is banned from changing names.");
