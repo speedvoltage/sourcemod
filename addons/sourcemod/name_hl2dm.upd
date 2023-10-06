@@ -4,10 +4,11 @@
 	{
 		"Version"
 		{
-			"Latest"	"1.8.1.1973"
+			"Latest"	"1.8.2.1973"
 		}
 
 		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?p=2810597 - Changes in 1.8.0.1972:"
+		"Notes"	"Dropped CSGO support, since it no longer exists."
 		"Notes"	"Complete code overhaul:"
 		"Notes"	"	Simplified large parts of the code."
 		"Notes"	"	Separated plugin modules into individual files for readability."
