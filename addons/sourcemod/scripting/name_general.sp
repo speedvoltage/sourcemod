@@ -61,7 +61,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Change Your Name"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.8.2.1973" /*Build number since 05/12/18*/
+#define PLUGIN_VERSION							"1.8.3.1973" /*Build number since 05/12/18*/
 #define PLUGIN_DESCRIPTION						"Complete plugin allowing name changes for players + administration tools for admins"
 #define PLUGIN_URL								"N/A"
 
@@ -157,7 +157,7 @@ char g_sPlayerNameHistory[PLATFORM_MAX_PATH];
 /*sm_rename redux*/
 char g_targetnewname[MAXPLAYERS + 1][MAX_NAME_LENGTH];
 
-char g_sAllCommands[18][45] =  {
+char g_sAllCommands[19][45] =  {
 	"sm_name_ban", 
 	"sm_name_unban", 
 	"sm_name_banid", 
@@ -173,7 +173,8 @@ char g_sAllCommands[18][45] =  {
 	"sm_name", 
 	"sm_oname", 
 	"sm_sname", 
-	"sm_srname", 
+	"sm_srname",  
+	"setinfo permaname", 
 	"sm_name_help", 
 	"sm_name_credits"
 };
@@ -614,12 +615,21 @@ public void OnClientPutInServer(int client)
 
 public void OnClientPostAdminCheck(int client)
 {
-	char id[64], name[MAX_NAME_LENGTH];
+	char id[64], name[MAX_NAME_LENGTH], permaname[MAX_NAME_LENGTH];
 	GetClientAuthId(client, AuthId_Steam2, id, sizeof(id));
 	GetClientName(client, name, sizeof(name));
 	g_names.SetString(id, name);
 	g_bClientAuthorized[client] = false;
 	LogMessage("%s was verified. Steam ID (%s) and name stored in memory.", name, id);
+	
+	if (!GetClientInfo(client, "permaname", permaname, sizeof(permaname)))return;
+	
+	else if (strlen(permaname) < 1)return;
+	else if (StrEqual(permaname, " ", false))return;
+	
+	PrintToChatAll("[SM] %N has joined the game with a permanent name: %s", client, permaname);
+	
+	SetClientInfo(client, "name", permaname);
 	
 	NameCheck(name, client);
 	IdCheck(id, client);
