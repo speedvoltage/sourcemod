@@ -7,7 +7,7 @@
 			"Latest"	"1.8.3.1973"
 		}
 
-		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?p=2810597 - Changes in 1.8.0.1972:"
+		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?p=2810597 - Changes in 1.8.3.1973:"
 		"Notes"	"Use \"setinfo permaname newname\" to set a permanent name to join a server with (it will only work if this plugin is installed on the server you connect to)."
 		"Notes"	"Files containing banned names and Steam IDs are no longer limited to 255 entries."
 		"Notes"	"Various code improvements."
