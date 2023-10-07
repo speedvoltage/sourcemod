@@ -109,7 +109,7 @@ public Action Command_Refresh(int client, int args)
 	for (int i = 1; i < MaxClients; i++)
 	{
 		if (!IsClientInGame(i) || IsFakeClient(i))
-			return Plugin_Handled;
+			continue;
 		
 		char name[MAX_NAME_LENGTH];
 		GetClientName(i, name, sizeof(name));

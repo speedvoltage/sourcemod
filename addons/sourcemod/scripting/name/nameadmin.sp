@@ -115,6 +115,13 @@ public Action Command_NameAdmin(int client, int args)
 			return Plugin_Handled;
 		}
 		
+		else if (strcmp(cmd2, "setinfo permaname") == 0)
+		{
+			if (GetCmdReplySource() == SM_REPLY_TO_CHAT)ReplyToCommand(client, "[SM] Check your console for output");
+			PrintToConsole(client, "[SM] Command description:\n setinfo permaname <new name> - Sets a name a player will conect with. Quotes are required around the new name.");
+			return Plugin_Handled;
+		}
+		
 		else if (strcmp(cmd2, "sm_name_credits") == 0)
 		{
 			if (GetCmdReplySource() == SM_REPLY_TO_CHAT)ReplyToCommand(client, "[SM] Check your console for output");
@@ -250,7 +257,7 @@ public Action Command_NameAdmin(int client, int args)
 				bool bIdfound;
 				for (int i = 1; i <= MaxClients; i++)
 				{
-					if (IsClientInGame(i)/*&& !IsFakeClient(i)*/)
+					if (IsClientInGame(i) && !IsFakeClient(i))
 					{
 						count++;
 						GetClientName(i, sName, sizeof(sName));
