@@ -55,7 +55,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Chat Spam Punishment"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.0.0"
+#define PLUGIN_VERSION							"1.0.2"
 #define PLUGIN_DESCRIPTION						"Punishes players who spam the chat"
 
 /*Plugin Updater*/
@@ -128,13 +128,13 @@ public void OnPluginStart()
 	/*ConVar*/
 	
 	g_cEnabled = CreateConVar("sm_chat_spam_enable", "1", "Enable/Disable Plugin", 0, true, 0.0, true, 1.0);
-	g_cThreshold = CreateConVar("sm_chat_spam_punishment_treshold", "8", "The maximum number of messages in a given time at which it will gag, kick or ban the player.", 0, true, 8.0);
+	g_cThreshold = CreateConVar("sm_chat_spam_punishment_threshold", "8", "The maximum number of messages in a given time at which it will gag, kick or ban the player.", 0, true, 8.0);
 	g_cThresholdWarningEnable = CreateConVar("sm_chat_spam_punishment_warning_enable", "1", "Should the player see a warning before their impending doom.", 0, true, 0.0, true, 1.0);
 	g_cThresholdWarning = CreateConVar("sm_chat_spam_punishment_warning", "1", "How close to the threshold should it warn the player of an impending action.", 0, true, 0.0);
 	g_cPunishmentType = CreateConVar("sm_chat_spam_punishment_type", "0", "Type of punishment to apply (0: gag, 1: kick, 2: ban).", 0, true, 0.0, true, 2.0);
-	g_cPunishmentGagTime = CreateConVar("sm_chat_spam_punishment_gag_time", "300", "How long to apply a gag for (time in seconds).", 0, true, 30.0);
-	g_cPunishmentBanTime = CreateConVar("sm_chat_spam_punishment_ban_time", "5", "How long to apply a ban for (time in minutes).", 0, true, 1.0);
-	g_cTimer = CreateConVar("sm_chat_spam_punishment_timer", "15", "The time at which the player's threshold will reset (time in seconds) [Use \"sm_chat_spam_punishment_time_sc\" if you have Sourcecomms].", 0, true, 15.0);
+	g_cPunishmentGagTime = CreateConVar("sm_chat_spam_punishment_gag_time", "5", "How long to apply a gag for (time in minutes). [Use \"sm_chat_spam_punishment_time_sc\" if you have Sourcecomms].", 0, true, 1.0);
+	g_cPunishmentBanTime = CreateConVar("sm_chat_spam_punishment_ban_time", "5", "How long to apply a ban for (time in minutes). [Use \"sm_chat_spam_punishment_time_sc\" if you have Sourcecomms].", 0, true, 1.0);
+	g_cTimer = CreateConVar("sm_chat_spam_punishment_timer", "15", "The time at which the player's threshold will reset (time in seconds)", 0, true, 15.0);
 	if (FindPluginByFile("sbpp_comms.smx"))
 	{
 		g_cPunishmentTimeSC = CreateConVar("sm_chat_spam_punishment_time_sb", "5", "How long to apply a gag or a ban (time in minutes).", 0, true, 1.0);
@@ -183,6 +183,7 @@ public void OnClientDisconnect(int client)
 
 public Action cmd_say(int client, const char[] cmd, int argc)
 {
+	if (!GetConVarBool(g_cEnabled))return Plugin_Continue;
 	if (CheckCommandAccess(client, "sm_admin", ADMFLAG_GENERIC))return Plugin_Continue;
 	bool gag = BaseComm_IsClientGagged(client);
 	if (gag)return Plugin_Continue;
@@ -214,23 +215,19 @@ public Action cmd_say(int client, const char[] cmd, int argc)
 			
 			else
 			{
+				float f_total;
+				f_total = GetConVarFloat(g_cPunishmentGagTime) * 60;
 				DataPack pack;
-				g_hTimerGag[client] = CreateDataTimer(GetConVarFloat(g_cPunishmentGagTime), t_ThresholdPunishment, pack, TIMER_FLAG_NO_MAPCHANGE | TIMER_DATA_HNDL_CLOSE);
+				g_hTimerGag[client] = CreateDataTimer(f_total, t_ThresholdPunishment, pack, TIMER_FLAG_NO_MAPCHANGE | TIMER_DATA_HNDL_CLOSE);
 				pack.WriteCell(client);
 				
 				delete g_hTimer[client];
 				g_iThreshold[client] = 0;
 				BaseComm_SetClientGag(client, true);
 				
-				int timeleft = GetConVarInt(g_cPunishmentGagTime);
-				int mins, secs;
-				if (timeleft > 0)
-				{
-					mins = timeleft / 60;
-					secs = timeleft % 60;
-					ShowActivity2(client, "[SM] ", "Gagged %N for %d:%02d for chat spam.", client, mins, secs);
-					LogMessage("%L was auto-gagged for %d:%02d for spamming the chat.", client, mins, secs);
-				}
+				ShowActivity2(client, "[SM] ", "Gagged %N for %d minute%s for chat spam.", client, GetConVarInt(g_cPunishmentGagTime), GetConVarInt(g_cPunishmentGagTime) <= 1 ? "" : "s");
+				LogMessage("%L was auto-gagged for %d minute%s for spamming the chat.", client, GetConVarInt(g_cPunishmentGagTime), GetConVarInt(g_cPunishmentGagTime) <= 1 ? "" : "s");
+				
 				return Plugin_Handled;
 			}
 		}
@@ -300,21 +297,13 @@ public void OnConVarChanged_GagTime(ConVar convar, const char[] oldValue, const 
 	
 	else
 	{
-		if (GetConVarInt(g_cPunishmentGagTime) < 30)
+		if (GetConVarInt(g_cPunishmentGagTime) < 1)
 		{
-			PrintToServer("[SM] Gag time cannot be less than 30 second.");
+			PrintToServer("[SM] Gag time cannot be less than 1 minute.");
 			return;
 		}
 		
-		int timeleft = GetConVarInt(g_cPunishmentGagTime);
-		int mins, secs;
-		if (timeleft > 0)
-		{
-			mins = timeleft / 60;
-			secs = timeleft % 60;
-		}
-		
-		PrintToServer("[SM] Gag time adjusted to %d:%02d.", mins, secs);
+		PrintToServer("[SM] Gag time adjusted to %d minute%s.", GetConVarInt(g_cPunishmentGagTime), GetConVarInt(g_cPunishmentGagTime) <= 1 ? "" : "s");
 	}
 	
 	return;
@@ -357,20 +346,20 @@ public void OnConVarChanged_Threshold(ConVar convar, const char[] oldValue, cons
 		return;
 	}
 	
-	PrintToServer("[SM] Treshold at which to punish players set to %i.", GetConVarInt(g_cThreshold));
+	PrintToServer("[SM] threshold at which to punish players set to %i.", GetConVarInt(g_cThreshold));
 	return;
 }
 
 public void OnConVarChanged_ThresholdWarningEnable(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	if (strcmp(newValue, "1") == 0)PrintToServer("[SM] Treshold warning enabled.");
-	if (strcmp(newValue, "0") == 0)PrintToServer("[SM] Treshold warning disabled.");
+	if (strcmp(newValue, "1") == 0)PrintToServer("[SM] threshold warning enabled.");
+	if (strcmp(newValue, "0") == 0)PrintToServer("[SM] threshold warning disabled.");
 	return;
 }
 
 public void OnConVarChanged_ThresholdWarning(ConVar convar, const char[] oldValue, const char[] newValue)
 {
-	PrintToServer("[SM] Treshold at which to warn players of an upcoming punishment set to %i.", GetConVarInt(g_cThresholdWarning));
+	PrintToServer("[SM] threshold at which to warn players of an upcoming punishment set to %i.", GetConVarInt(g_cThresholdWarning));
 	return;
 }
 
@@ -399,7 +388,7 @@ public void OnConVarChanged_ThresholdTimer(ConVar convar, const char[] oldValue,
 	}
 	PrintToServer("[SM] Player chat spam tokens will reset after %d:%02d.", mins, secs);
 	return;
-} 
+}
 
 public void OnConVarChanged_PunishmentTimeSC(ConVar convar, const char[] oldValue, const char[] newValue)
 {
@@ -409,13 +398,6 @@ public void OnConVarChanged_PunishmentTimeSC(ConVar convar, const char[] oldValu
 		return;
 	}
 	
-	int timeleft = GetConVarInt(g_cPunishmentTimeSC);
-	int mins, secs;
-	if (timeleft > 0)
-	{
-		mins = timeleft / 60;
-		secs = timeleft % 60;
-	}
-	PrintToServer("[SM] Player chat spam tokens will reset after %d:%02d.", mins, secs);
+	PrintToServer("[SM] Gag and ban time adjusted to %i minute%s.", GetConVarInt(g_cPunishmentTimeSC), GetConVarInt(g_cPunishmentTimeSC) <= 1 ? "" : "s");
 	return;
 } 
