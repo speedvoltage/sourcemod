@@ -1,1 +1,19 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.0.2"
+		}
 
+		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?t=344132 - Changes in 1.0.2"
+		"Notes"	"sm_chat_spam_punishment_gag_time is now using minutes for consistency reasons. All commands now use minutes."
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/chatspamcontrol.smx"
+		"Source"	"Path_SM/scripting/chatspamcontrol.sp"
+	}
+}
