@@ -61,7 +61,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Change Your Name"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.8.2.1973" /*Build number since 05/12/18*/
+#define PLUGIN_VERSION							"1.8.3.1973" /*Build number since 05/12/18*/
 #define PLUGIN_DESCRIPTION						"Complete plugin allowing name changes for players + administration tools for admins"
 #define PLUGIN_URL								"N/A"
 
