@@ -61,7 +61,7 @@ PLUGIN DEFINES
 /*Plugin Info*/
 #define PLUGIN_NAME								"Change Your Name"
 #define PLUGIN_AUTHOR							"Peter Brev"
-#define PLUGIN_VERSION							"1.8.3.1973" /*Build number since 05/12/18*/
+#define PLUGIN_VERSION							"1.8.4.1983" /*Build number since 05/12/18*/
 #define PLUGIN_DESCRIPTION						"Complete plugin allowing name changes for players + administration tools for admins"
 #define PLUGIN_URL								"N/A"
 
@@ -597,11 +597,13 @@ public void OnPluginEnd()
 
 public void OnClientConnected(int client)
 {
+	if (IsFakeClient(client))return;
 	g_bClientAuthorized[client] = true;
 }
 
 public void OnClientPutInServer(int client)
 {
+	if (IsFakeClient(client))return;
 	g_bAdminRenamed[client] = false;
 	g_bForcedName[client] = false;
 	
@@ -618,6 +620,7 @@ public void OnClientPutInServer(int client)
 
 public void OnClientPostAdminCheck(int client)
 {
+	if (IsFakeClient(client))return;
 	char id[64], name[MAX_NAME_LENGTH];
 	GetClientAuthId(client, AuthId_Steam2, id, sizeof(id));
 	GetClientName(client, name, sizeof(name));
