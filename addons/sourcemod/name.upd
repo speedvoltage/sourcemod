@@ -1,0 +1,20 @@
+"Updater"
+{
+	"Information"
+	{
+		"Version"
+		{
+			"Latest"	"1.8.5.1984"
+		}
+
+		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?p=2810597 - Changes in 1.8.5.1984:"
+		"Notes"	"Added missing code that prevented sm_hname_enable to work."
+		"Notes"	"One plugin is required across all games now."
+	}
+
+	"Files"
+	{
+		"Plugin"	"Path_SM/plugins/name.smx"
+		"Plugin"	"Path_SM/scripting/name.sp"
+	}
+}
