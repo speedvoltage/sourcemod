@@ -4,11 +4,8 @@
 	{
 		"Version"
 		{
-			"Latest"	"1.0.1"
+			"Latest"	"1.0.3"
 		}
-
-		"Notes"	"More info @ https://forums.alliedmods.net/showthread.php?t=344024 - Changes in 1.0.1:"
-		"Notes"	"Fixed an issue where Sourcemod would sometimes output an error when a player disconnected."
 	}
 
 	"Files"
