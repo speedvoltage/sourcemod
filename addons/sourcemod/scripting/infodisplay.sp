@@ -30,7 +30,7 @@ PLUGIN DEFINES
 ******************************/
 
 /*Plugin Info*/
-#define PLUGIN_NAME								"Sublime | Info Display"
+#define PLUGIN_NAME								"Info Display"
 #define PLUGIN_AUTHOR							"Peter Brev"
 #define PLUGIN_VERSION							"1.0.0.0"
 #define PLUGIN_DESCRIPTION						"Displays the info of players to admins only"
