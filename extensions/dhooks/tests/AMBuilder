@@ -19,7 +19,7 @@ for cxx in builder.targets:
       'DYNAMICHOOKS_x86_64',
     ]
     binary.compiler.cxxincludes += [
-      os.path.join(builder.sourcePath, 'public', 'amtl'),
+      os.path.join(builder.sourcePath, 'public', 'amtl', 'amtl'),
       os.path.join(builder.sourcePath, 'extensions', 'dhooks', 'DynamicHooks'),
     ]
     binary.sources += [
