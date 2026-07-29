@@ -693,6 +693,11 @@ else:
       'tools/buildbot/PackageScript',
     ]
 
+if getattr(builder.options, 'enable_tests', False):
+  BuildScripts += [
+    'extensions/dhooks/tests/AMBuilder',
+  ]
+
 builder.Build(BuildScripts, { 'SM': SM, 'SP': SP })
 
 if builder.options.breakpad_dump:

@@ -1,0 +1,12 @@
+for cxx in builder.targets:
+  if cxx.target.platform != 'linux':
+    continue
+  if cxx.target.arch not in ['x86', 'x86_64']:
+    continue
+
+  binary = SM.Program(builder, cxx, 'dhooks_abi_oracle')
+  binary.sources += [
+    'abi_oracle.cpp',
+    'abi_targets.cpp',
+  ]
+  builder.Add(binary)

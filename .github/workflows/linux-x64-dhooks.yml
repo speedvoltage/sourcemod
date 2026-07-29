@@ -66,6 +66,7 @@ jobs:
           cd build
           python3 ../configure.py \
             --enable-optimize \
+            --enable-tests \
             --no-mysql \
             --sdks='${{ env.SDKS }}' \
             --targets='${{ env.TARGETS }}' \
@@ -85,6 +86,15 @@ jobs:
           file addons/sourcemod/extensions/x64/sdktools.ext.2.hl2dm.so | grep -q 'ELF 64-bit'
           file addons/sourcemod/extensions/dhooks.ext.so | grep -q 'ELF 32-bit'
           test ! -e addons/sourcemod/extensions/x64/dhooks.ext.so
+
+      - name: Run ABI oracle
+        working-directory: sourcemod/build/extensions/dhooks/tests/dhooks_abi_oracle
+        shell: bash
+        run: |
+          file linux-x86/dhooks_abi_oracle | grep -q 'ELF 32-bit'
+          file linux-x86_64/dhooks_abi_oracle | grep -q 'ELF 64-bit'
+          linux-x86/dhooks_abi_oracle
+          linux-x86_64/dhooks_abi_oracle
 
       - name: Build debug x86
         working-directory: sourcemod
