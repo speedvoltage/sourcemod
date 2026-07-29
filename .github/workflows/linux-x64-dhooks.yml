@@ -1,0 +1,111 @@
+name: Linux x64 DHooks
+
+on:
+  push:
+    branches:
+      - linux-x64-dhooks
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/alliedmodders/build-containers/debian11-clang22@sha256:52c35568d47abd5974855247a5373b3ee22aaa5db508b873f3fc4d247c9f8f5a
+    env:
+      SDKS: hl2dm
+      TARGETS: x86,x86_64
+      MMSOURCE_VERSION: "1.12"
+      MMSOURCE_REF: afc8233eedcd0c832b411c1da852328328db5c50
+      HL2SDK_HL2DM_REF: af883d5052349f09fbe641c99149b84769a62d01
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          path: sourcemod
+
+      - name: Resolve paths
+        id: paths
+        shell: bash
+        run: echo "dependencies=$GITHUB_WORKSPACE/dependencies" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          mkdir -p '${{ steps.paths.outputs.dependencies }}/sourcemod'
+          cd '${{ steps.paths.outputs.dependencies }}'
+          ../sourcemod/tools/checkout-deps.sh -m -s '${{ env.SDKS }}'
+          git -C 'mmsource-${{ env.MMSOURCE_VERSION }}' checkout --detach '${{ env.MMSOURCE_REF }}'
+          git -C hl2sdk-hl2dm checkout --detach '${{ env.HL2SDK_HL2DM_REF }}'
+
+      - name: Record dependencies
+        shell: bash
+        run: |
+          {
+            git -C sourcemod rev-parse HEAD
+            git -C sourcemod/public/amtl rev-parse HEAD
+            git -C sourcemod/sourcepawn rev-parse HEAD
+            git -C sourcemod/hl2sdk-manifests rev-parse HEAD
+            git -C sourcemod/public/safetyhook rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}' rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/hl2sdk-hl2dm' rev-parse HEAD
+          } | tee sourcemod/dependency-revisions.txt
+
+      - name: Build optimized
+        working-directory: sourcemod
+        shell: bash
+        run: |
+          mkdir build
+          cd build
+          python3 ../configure.py \
+            --enable-optimize \
+            --no-mysql \
+            --sdks='${{ env.SDKS }}' \
+            --targets='${{ env.TARGETS }}' \
+            '--mms-path=${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}' \
+            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+          ambuild
+
+      - name: Verify architecture baseline
+        working-directory: sourcemod/build/package
+        shell: bash
+        run: |
+          file addons/sourcemod/bin/sourcemod.2.hl2dm.so | grep -q 'ELF 32-bit'
+          file addons/sourcemod/bin/x64/sourcemod.2.hl2dm.so | grep -q 'ELF 64-bit'
+          file addons/sourcemod/extensions/sdkhooks.ext.2.hl2dm.so | grep -q 'ELF 32-bit'
+          file addons/sourcemod/extensions/x64/sdkhooks.ext.2.hl2dm.so | grep -q 'ELF 64-bit'
+          file addons/sourcemod/extensions/sdktools.ext.2.hl2dm.so | grep -q 'ELF 32-bit'
+          file addons/sourcemod/extensions/x64/sdktools.ext.2.hl2dm.so | grep -q 'ELF 64-bit'
+          file addons/sourcemod/extensions/dhooks.ext.so | grep -q 'ELF 32-bit'
+          test ! -e addons/sourcemod/extensions/x64/dhooks.ext.so
+
+      - name: Build debug x86
+        working-directory: sourcemod
+        shell: bash
+        run: |
+          mkdir build-debug-x86
+          cd build-debug-x86
+          python3 ../configure.py \
+            --enable-debug \
+            --no-mysql \
+            --sdks='${{ env.SDKS }}' \
+            --targets=x86 \
+            '--mms-path=${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}' \
+            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+          ambuild
+          file package/addons/sourcemod/extensions/dhooks.ext.so | grep -q 'ELF 32-bit'
+
+      - name: Upload baseline
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourcemod-linux-baseline
+          path: |
+            sourcemod/build/package
+            sourcemod/dependency-revisions.txt
