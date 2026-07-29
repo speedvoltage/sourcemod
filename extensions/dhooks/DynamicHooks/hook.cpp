@@ -52,6 +52,16 @@ using namespace sp;
 // ============================================================================
 #define JMP_SIZE 6
 
+#if defined(DYNAMICHOOKS_x86_64) && SH_SYS == SH_SYS_LINUX
+namespace
+{
+	std::uint64_t IsMainThread()
+	{
+		return g_MainThreadId == std::this_thread::get_id() ? 1 : 0;
+	}
+}
+#endif
+
 
 // ============================================================================
 // >> CHook
@@ -80,13 +90,14 @@ CHook::CHook(void* pFunc, ICallingConvention* pConvention)
 	m_Hook = std::move(result.value());
 	m_pTrampoline = m_Hook.original<void*>();
 
-	m_Hook.enable();
+	if (!m_Hook.enable())
+		return;
 }
 
 CHook::~CHook()
 {
 	if (m_Hook.enabled()) {
-		m_Hook.disable();
+		(void)m_Hook.disable();
 	}
 
 	// x64 will free these in the m_bridge/m_postCallback destructors.
@@ -147,16 +158,38 @@ bool CHook::AreCallbacksRegistered()
 	return false;
 }
 
+bool CHook::IsInstalled() const
+{
+	return m_pBridge &&
+		m_pNewRetAddr &&
+		m_pTrampoline &&
+		m_Hook.enabled();
+}
+
 ReturnAction_t CHook::HookHandler(HookType_t eHookType)
 {
+	if (eHookType == HOOKTYPE_PRE)
+		m_pCallingConvention->BeginCallContext(m_pRegisters);
+
 	if (eHookType == HOOKTYPE_POST)
 	{
 		ReturnAction_t lastPreReturnAction = m_LastPreReturnAction.back();
 		m_LastPreReturnAction.pop_back();
 		if (lastPreReturnAction >= ReturnAction_Override)
 			m_pCallingConvention->RestoreReturnValue(m_pRegisters);
-		if (lastPreReturnAction < ReturnAction_Supercede)
+#ifdef DYNAMICHOOKS_x86_64
+		m_pCallingConvention->SaveReturnValue(m_pRegisters);
+#endif
+		bool restoreCallArguments =
+			lastPreReturnAction < ReturnAction_Supercede;
+#if defined(DYNAMICHOOKS_x86_64) && SH_SYS == SH_SYS_LINUX
+		restoreCallArguments = true;
+#endif
+		if (restoreCallArguments)
 			m_pCallingConvention->RestoreCallArguments(m_pRegisters);
+#ifdef DYNAMICHOOKS_x86_64
+		m_pCallingConvention->RestoreReturnValue(m_pRegisters);
+#endif
 	}
 
 	ReturnAction_t returnAction = ReturnAction_Ignored;
@@ -169,6 +202,10 @@ ReturnAction_t CHook::HookHandler(HookType_t eHookType)
 		{
 			m_LastPreReturnAction.push_back(returnAction);
 			m_pCallingConvention->SaveCallArguments(m_pRegisters);
+		}
+		else
+		{
+			m_pCallingConvention->EndCallContext();
 		}
 		return returnAction;
 	}
@@ -186,8 +223,17 @@ ReturnAction_t CHook::HookHandler(HookType_t eHookType)
 		m_LastPreReturnAction.push_back(returnAction);
 		if (returnAction >= ReturnAction_Override)
 			m_pCallingConvention->SaveReturnValue(m_pRegisters);
-		if (returnAction < ReturnAction_Supercede)
+		m_pCallingConvention->ApplyCallArguments(m_pRegisters);
+		bool saveCallArguments = returnAction < ReturnAction_Supercede;
+#if defined(DYNAMICHOOKS_x86_64) && SH_SYS == SH_SYS_LINUX
+		saveCallArguments = true;
+#endif
+		if (saveCallArguments)
 			m_pCallingConvention->SaveCallArguments(m_pRegisters);
+	}
+	else
+	{
+		m_pCallingConvention->EndCallContext();
 	}
 
 	return returnAction;
@@ -224,7 +270,10 @@ void __cdecl CHook::SetReturnAddress(void* pRetAddr, void* pESP)
 
 #ifdef DYNAMICHOOKS_x86_64
 using namespace SourceHook::Asm;
+
+#if !defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
 SourceHook::CPageAlloc SourceHook::Asm::GenBuffer::ms_Allocator(16);
+#endif
 
 void PrintFunc(const char* message) {
 	g_pSM->LogMessage(myself, message);
@@ -299,6 +348,59 @@ void CHook::CreateBridge()
 	//jit.breakpoint();
 	PrintRegisters(jit);
 
+#if SH_SYS == SH_SYS_LINUX
+	jit.sub(rsp, 120);
+	jit.mov(rsp(), rax);
+	jit.mov(rsp(8), rdi);
+	jit.mov(rsp(16), rsi);
+	jit.mov(rsp(24), rdx);
+	jit.mov(rsp(32), rcx);
+	jit.mov(rsp(40), r8);
+	jit.mov(rsp(48), r9);
+	jit.movsd(rsp(56), xmm0);
+	jit.movsd(rsp(64), xmm1);
+	jit.movsd(rsp(72), xmm2);
+	jit.movsd(rsp(80), xmm3);
+	jit.movsd(rsp(88), xmm4);
+	jit.movsd(rsp(96), xmm5);
+	jit.movsd(rsp(104), xmm6);
+	jit.movsd(rsp(112), xmm7);
+	jit.mov(
+		rax,
+		reinterpret_cast<std::uint64_t>(&IsMainThread));
+	jit.call(rax);
+	jit.mov(r11, rax);
+	jit.mov(rax, rsp());
+	jit.mov(rdi, rsp(8));
+	jit.mov(rsi, rsp(16));
+	jit.mov(rdx, rsp(24));
+	jit.mov(rcx, rsp(32));
+	jit.mov(r8, rsp(40));
+	jit.mov(r9, rsp(48));
+	jit.movsd(xmm0, rsp(56));
+	jit.movsd(xmm1, rsp(64));
+	jit.movsd(xmm2, rsp(72));
+	jit.movsd(xmm3, rsp(80));
+	jit.movsd(xmm4, rsp(88));
+	jit.movsd(xmm5, rsp(96));
+	jit.movsd(xmm6, rsp(104));
+	jit.movsd(xmm7, rsp(112));
+	jit.add(rsp, 120);
+	jit.test(r11, r11);
+	jit.jne(0);
+	std::int32_t interceptJump = jit.get_outputpos();
+	jit.sub(rsp, 8);
+	jit.push(rax);
+	jit.mov(rax, reinterpret_cast<std::uint64_t>(&m_pTrampoline));
+	jit.mov(rax, rax());
+	jit.mov(rsp(8), rax);
+	jit.pop(rax);
+	jit.retn();
+	jit.rewrite<std::int32_t>(
+		interceptJump - sizeof(std::int32_t),
+		jit.get_outputpos() - interceptJump);
+#endif
+
 	// Save registers right away
 	Write_SaveRegisters(jit, HOOKTYPE_PRE);
 
@@ -364,6 +466,9 @@ void CHook::Write_ModifyReturnAddress(x64JitWriter& jit)
 
 	// Shadow space 32 bytes + 8 bytes to keep it aligned on 16 bytes
 	MSVC_ONLY(jit.sub(rsp, 40));
+#if SH_SYS == SH_SYS_LINUX
+	jit.sub(rsp, 8);
+#endif
 
 	// 1st param (this)
 	GCC_ONLY(jit.mov(rdi, reinterpret_cast<std::uint64_t>(this)));
@@ -374,7 +479,11 @@ void CHook::Write_ModifyReturnAddress(x64JitWriter& jit)
 	MSVC_ONLY(jit.mov(rdx, rax));
 
 	// 3rd parameter (rsp)
+#if SH_SYS == SH_SYS_LINUX
+	jit.lea(rdx, rsp(8));
+#else
 	GCC_ONLY(jit.lea(rdx, rsp()));
+#endif
 	MSVC_ONLY(jit.lea(r8, rsp(40)));
 
 	// Call SetReturnAddress
@@ -383,6 +492,9 @@ void CHook::Write_ModifyReturnAddress(x64JitWriter& jit)
 
 	// Free shadow space
 	MSVC_ONLY(jit.add(rsp, 40));
+#if SH_SYS == SH_SYS_LINUX
+	jit.add(rsp, 8);
+#endif
 	
 	// Override the return address. This is a redirect to our post-hook code
 	CreatePostCallback();
@@ -420,13 +532,22 @@ void CHook::CreatePostCallback()
 
 	// Shadow space 32 bytes + 8 bytes to keep it aligned on 16 bytes
 	MSVC_ONLY(jit.sub(rsp, 40));
+#if SH_SYS == SH_SYS_LINUX
+	jit.sub(rsp, 24);
+	jit.mov(rsp(), rax);
+	jit.movsd(rsp(8), xmm0);
+#endif
 
 	// 1st param (this)
 	GCC_ONLY(jit.mov(rdi, reinterpret_cast<std::uint64_t>(this)));
 	MSVC_ONLY(jit.mov(rcx, reinterpret_cast<std::uint64_t>(this)));
 
 	// 2n parameter (rsp)
+#if SH_SYS == SH_SYS_LINUX
+	jit.lea(rsi, rsp(24));
+#else
 	GCC_ONLY(jit.lea(rsi, rsp()));
+#endif
 	MSVC_ONLY(jit.lea(rdx, rsp(40)));
 
 	// Call GetReturnAddress
@@ -437,8 +558,16 @@ void CHook::CreatePostCallback()
 	MSVC_ONLY(jit.add(rsp, 40));
 
 	// Jump to the original return address
+#if SH_SYS == SH_SYS_LINUX
+	jit.mov(r11, rax);
+	jit.mov(rax, rsp());
+	jit.movsd(xmm0, rsp(8));
+	jit.add(rsp, 32);
+	jit.jump(r11);
+#else
 	jit.add(rsp, 8);
 	jit.jump(rax);
+#endif
 }
 
 void CHook::Write_CallHandler(x64JitWriter& jit, HookType_t type)
@@ -453,6 +582,9 @@ void CHook::Write_CallHandler(x64JitWriter& jit, HookType_t type)
 
 	// Shadow space 32 bytes + 8 bytes to keep it aligned on 16 bytes
 	MSVC_ONLY(jit.sub(rsp, 40));
+#if SH_SYS == SH_SYS_LINUX
+	jit.sub(rsp, 8);
+#endif
 
 	// Call the global hook handler
 
@@ -469,6 +601,9 @@ void CHook::Write_CallHandler(x64JitWriter& jit, HookType_t type)
 	
 	// Free shadow space
 	MSVC_ONLY(jit.add(rsp, 40));
+#if SH_SYS == SH_SYS_LINUX
+	jit.add(rsp, 8);
+#endif
 }
 
 void CHook::Write_SaveRegisters(x64JitWriter& jit, HookType_t type)
@@ -547,7 +682,7 @@ void CHook::Write_SaveRegisters(x64JitWriter& jit, HookType_t type)
 void CHook::Write_RestoreRegisters(x64JitWriter& jit, HookType_t type)
 {
 	// RAX & RSP will be restored last
-	bool restoreRAX = false, restoreRSP = false;
+	bool restoreRAX = false;
 	
 	const auto& vecRegistersToRestore = m_pCallingConvention->GetRegisters();
 	for(size_t i = 0; i < vecRegistersToRestore.size(); i++)

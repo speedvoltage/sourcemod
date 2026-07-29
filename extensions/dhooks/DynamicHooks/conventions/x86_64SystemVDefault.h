@@ -48,9 +48,23 @@ public:
 	virtual void RestoreReturnValue(CRegisters *registers) override;
 	virtual void SaveCallArguments(CRegisters *registers) override;
 	virtual void RestoreCallArguments(CRegisters *registers) override;
+	virtual void BeginCallContext(CRegisters *registers) override;
+	virtual void ApplyCallArguments(CRegisters *registers) override;
+	virtual void EndCallContext() override;
 
 private:
+	struct CallArgumentContext
+	{
+		std::size_t aliasedArgument = static_cast<std::size_t>(-1);
+		std::unique_ptr<uint8_t[]> aliasedValue;
+	};
+
+	void *GetLiveArgumentPtr(unsigned int index, CRegisters *registers);
+
 	std::uint32_t m_stackArgs;
+	std::vector<std::uintptr_t> m_savedStackPointers;
+	std::vector<std::uint64_t> m_savedArgumentRax;
+	std::vector<CallArgumentContext> m_callArgumentContexts;
 };
 
 #endif

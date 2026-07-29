@@ -117,6 +117,7 @@ std::vector<Register_t> x86_64SystemVDefault::GetRegisters()
 	};
 
 	add(RSP);
+	add(RAX);
 	if (m_returnType.type != DATA_TYPE_VOID)
 		add(IsSseType(m_returnType.type) ? XMM0 : RAX);
 	for (const auto &arg : m_vecArgTypes)
@@ -161,6 +162,20 @@ void *x86_64SystemVDefault::GetArgumentPtr(unsigned int index, CRegisters *regis
 	if (!registers || index >= m_vecArgTypes.size())
 		return nullptr;
 
+	if (!m_callArgumentContexts.empty())
+	{
+		CallArgumentContext &context = m_callArgumentContexts.back();
+		if (context.aliasedArgument == index && context.aliasedValue)
+			return context.aliasedValue.get();
+	}
+
+	return GetLiveArgumentPtr(index, registers);
+}
+
+void *x86_64SystemVDefault::GetLiveArgumentPtr(
+	unsigned int index,
+	CRegisters *registers)
+{
 	const auto &arg = m_vecArgTypes[index];
 	if (arg.custom_register != None)
 	{
@@ -229,21 +244,79 @@ void x86_64SystemVDefault::RestoreReturnValue(CRegisters *registers)
 
 void x86_64SystemVDefault::SaveCallArguments(CRegisters *registers)
 {
+	if (!registers || !registers->m_rsp || !registers->m_rax)
+		return;
+
 	std::unique_ptr<uint8_t[]> saved =
 		std::make_unique<uint8_t[]>(m_vecArgTypes.size() * 8);
 	for (std::size_t i = 0; i < m_vecArgTypes.size(); i++)
 		memcpy(saved.get() + i * 8, GetArgumentPtr(static_cast<unsigned int>(i), registers), 8);
 	m_pSavedCallArguments.push_back(std::move(saved));
+	m_savedStackPointers.push_back(registers->m_rsp->GetValue<std::uintptr_t>());
+	m_savedArgumentRax.push_back(registers->m_rax->GetValue<std::uint64_t>());
 }
 
 void x86_64SystemVDefault::RestoreCallArguments(CRegisters *registers)
 {
-	if (m_pSavedCallArguments.empty())
+	if (!registers ||
+		!registers->m_rsp ||
+		!registers->m_rax ||
+		m_pSavedCallArguments.empty() ||
+		m_savedStackPointers.empty() ||
+		m_savedArgumentRax.empty())
 		return;
+	registers->m_rsp->SetValue<std::uintptr_t>(m_savedStackPointers.back());
 	for (std::size_t i = 0; i < m_vecArgTypes.size(); i++)
 		memcpy(
 			GetArgumentPtr(static_cast<unsigned int>(i), registers),
 			m_pSavedCallArguments.back().get() + i * 8,
 			8);
+	registers->m_rax->SetValue<std::uint64_t>(m_savedArgumentRax.back());
 	m_pSavedCallArguments.pop_back();
+	m_savedStackPointers.pop_back();
+	m_savedArgumentRax.pop_back();
+}
+
+void x86_64SystemVDefault::BeginCallContext(CRegisters *registers)
+{
+	m_callArgumentContexts.emplace_back();
+	if (!registers || !IsSseType(m_returnType.type))
+		return;
+
+	CallArgumentContext &context = m_callArgumentContexts.back();
+	for (std::size_t i = 0; i < m_vecArgTypes.size(); i++)
+	{
+		if (m_vecArgTypes[i].custom_register != XMM0)
+			continue;
+		void *argument = GetLiveArgumentPtr(
+			static_cast<unsigned int>(i),
+			registers);
+		if (!argument)
+			return;
+		context.aliasedArgument = i;
+		context.aliasedValue = std::make_unique<uint8_t[]>(8);
+		memcpy(context.aliasedValue.get(), argument, 8);
+		return;
+	}
+}
+
+void x86_64SystemVDefault::ApplyCallArguments(CRegisters *registers)
+{
+	if (!registers || m_callArgumentContexts.empty())
+		return;
+
+	CallArgumentContext &context = m_callArgumentContexts.back();
+	if (!context.aliasedValue)
+		return;
+	void *argument = GetLiveArgumentPtr(
+		static_cast<unsigned int>(context.aliasedArgument),
+		registers);
+	if (argument)
+		memcpy(argument, context.aliasedValue.get(), 8);
+}
+
+void x86_64SystemVDefault::EndCallContext()
+{
+	if (!m_callArgumentContexts.empty())
+		m_callArgumentContexts.pop_back();
 }

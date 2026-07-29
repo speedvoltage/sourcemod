@@ -59,5 +59,8 @@ struct EntityListener
 	IPluginFunction *callback;
 };
 
+void StartEntityHookRemovalFrameHook();
+void StopEntityHookRemovalFrameHook();
+
 extern std::vector<DHooksManager *> g_pHooks;
 #endif

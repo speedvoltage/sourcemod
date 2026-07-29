@@ -82,7 +82,11 @@ size_t GetRegisterParamOffset(HookParamsStruct *paramStruct, unsigned int index)
 	{
 		if (paramStruct->dg->params[i].custom_register == None)
 		{
+#ifdef KE_ARCH_X64
+			stackSize += 8;
+#else
 			stackSize += paramStruct->dg->params[i].size;
+#endif
 		}
 	}
 
@@ -93,7 +97,11 @@ size_t GetRegisterParamOffset(HookParamsStruct *paramStruct, unsigned int index)
 		if (paramStruct->dg->params[i].custom_register == None)
 			continue;
 
+#ifdef KE_ARCH_X64
+		offset += 8;
+#else
 		offset += paramStruct->dg->params[i].size;
+#endif
 	}
 	return offset;
 }
@@ -108,7 +116,21 @@ size_t GetParamOffset(HookParamsStruct *paramStruct, unsigned int index)
 
 size_t GetParamTypeSize(HookParamType type)
 {
+#ifdef KE_ARCH_X64
+	switch (type)
+	{
+	case HookParamType_Int:
+		return sizeof(int);
+	case HookParamType_Bool:
+		return sizeof(bool);
+	case HookParamType_Float:
+		return sizeof(float);
+	default:
+		return sizeof(void *);
+	}
+#else
 	return sizeof(void *);
+#endif
 }
 
 size_t GetParamsSize(DHooksCallback *dg)//Get the full size, this is for creating the STACK.
@@ -117,63 +139,80 @@ size_t GetParamsSize(DHooksCallback *dg)//Get the full size, this is for creatin
 
 	for (int i = dg->params.size() - 1; i >= 0; i--)
 	{
+#ifdef KE_ARCH_X64
+		res += 8;
+#else
 		res += dg->params.at(i).size;
+#endif
 	}
 
 	return res;
 }
 
-DataType_t DynamicHooks_ConvertParamTypeFrom(HookParamType type)
+bool DynamicHooks_ConvertParamTypeFrom(HookParamType type, DataType_t *result)
 {
 	switch (type)
 	{
 	case HookParamType_Int:
-		return DATA_TYPE_INT;
+		*result = DATA_TYPE_INT;
+		return true;
 	case HookParamType_Bool:
-		return DATA_TYPE_BOOL;
+		*result = DATA_TYPE_BOOL;
+		return true;
 	case HookParamType_Float:
-		return DATA_TYPE_FLOAT;
+		*result = DATA_TYPE_FLOAT;
+		return true;
+	case HookParamType_String:
+		*result = DATA_TYPE_STRING;
+		return true;
 	case HookParamType_StringPtr:
 	case HookParamType_CharPtr:
 	case HookParamType_VectorPtr:
 	case HookParamType_CBaseEntity:
 	case HookParamType_ObjectPtr:
 	case HookParamType_Edict:
-		return DATA_TYPE_POINTER;
+		*result = DATA_TYPE_POINTER;
+		return true;
 	case HookParamType_Object:
-		return DATA_TYPE_OBJECT;
+		*result = DATA_TYPE_OBJECT;
+		return true;
 	default:
-		smutils->LogError(myself, "Unhandled parameter type %d!", type);
+		return false;
 	}
-
-	return DATA_TYPE_POINTER;
 }
 
-DataType_t DynamicHooks_ConvertReturnTypeFrom(ReturnType type)
+bool DynamicHooks_ConvertReturnTypeFrom(ReturnType type, DataType_t *result)
 {
 	switch (type)
 	{
 	case ReturnType_Void:
-		return DATA_TYPE_VOID;
+		*result = DATA_TYPE_VOID;
+		return true;
 	case ReturnType_Int:
-		return DATA_TYPE_INT;
+		*result = DATA_TYPE_INT;
+		return true;
 	case ReturnType_Bool:
-		return DATA_TYPE_BOOL;
+		*result = DATA_TYPE_BOOL;
+		return true;
 	case ReturnType_Float:
-		return DATA_TYPE_FLOAT;
+		*result = DATA_TYPE_FLOAT;
+		return true;
+	case ReturnType_String:
+		*result = DATA_TYPE_STRING;
+		return true;
 	case ReturnType_StringPtr:
 	case ReturnType_CharPtr:
 	case ReturnType_VectorPtr:
 	case ReturnType_CBaseEntity:
 	case ReturnType_Edict:
-		return DATA_TYPE_POINTER;
+		*result = DATA_TYPE_POINTER;
+		return true;
 	case ReturnType_Vector:
-		return DATA_TYPE_OBJECT;
+		*result = DATA_TYPE_OBJECT;
+		return true;
 	default:
-		smutils->LogError(myself, "Unhandled return type %d!", type);
+		return false;
 	}
-
-	return DATA_TYPE_VOID;
 }
 
 Register_t DynamicHooks_ConvertRegisterFrom(PluginRegister reg)

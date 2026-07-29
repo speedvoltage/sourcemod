@@ -35,6 +35,7 @@
 #include "manager.h"
 #include "vhook.h"
 #include <am-hashmap.h>
+#include <string>
 
 class CDynamicHooksSourcePawn;
 typedef ke::HashMap<IPluginFunction *, CDynamicHooksSourcePawn *, ke::PointerPolicy<IPluginFunction>> CallbackMap;
@@ -60,16 +61,20 @@ public:
 public:
 	CHook *m_pDetour;
 	CallingConvention callConv;
+	bool enabled;
 };
 
 #if defined( DHOOKS_DYNAMIC_DETOUR )
-ICallingConvention *ConstructCallingConvention(HookSetup *setup);
+ICallingConvention *ConstructCallingConvention(HookSetup *setup, std::string *error = nullptr);
 #endif
+bool CallingConventionsMatch(ICallingConvention *left, ICallingConvention *right);
 bool UpdateRegisterArgumentSizes(CHook* pDetour, HookSetup *setup);
 ReturnAction_t HandleDetour(HookType_t hookType, CHook* pDetour);
 bool AddDetourPluginHook(HookType_t hookType, CHook *pDetour, HookSetup *setup, IPluginFunction *pCallback);
 bool RemoveDetourPluginHook(HookType_t hookType, CHook *pDetour, IPluginFunction *pCallback);
 void RemoveAllCallbacksForContext(IPluginContext *pContext);
 void CleanupDetours();
+void StartDetourRemovalFrameHook();
+void StopDetourRemovalFrameHook();
 
 #endif

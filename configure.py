@@ -46,6 +46,8 @@ parser.options.add_argument('--scripting-only', action='store_true', dest='scrip
                           help="Only build and package the files required for scripting in SourcePawn.")
 parser.options.add_argument('--enable-asan', action='store_true', dest='enable_asan',
                             default=False, help='Enable ASAN (clang only)')
+parser.options.add_argument('--enable-dhooks-x64', action='store_true', dest='enable_dhooks_x64',
+                            default=False, help='Enable experimental DHooks support on Linux x64')
 parser.options.add_argument('--enable-tests', action='store_true', dest='enable_tests',
                             default=False, help='Build standalone test programs')
 parser.Configure()

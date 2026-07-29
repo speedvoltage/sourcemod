@@ -185,6 +185,21 @@ void* x86_64MicrosoftDefault::GetArgumentPtr(unsigned int index, CRegisters* reg
 		//g_pSM->LogMessage(myself, "Not enough arguments");
 		return nullptr;
 	}
+
+	if (!m_callArgumentContexts.empty())
+	{
+		CallArgumentContext& context = m_callArgumentContexts.back();
+		if (context.aliasedArgument == index && context.aliasedValue)
+			return context.aliasedValue.get();
+	}
+
+	return GetLiveArgumentPtr(index, registers);
+}
+
+void* x86_64MicrosoftDefault::GetLiveArgumentPtr(unsigned int index, CRegisters* registers)
+{
+	if (!registers)
+		return nullptr;
 	
 	// Check if this argument was passed in a register.
 	if (m_vecArgTypes[index].custom_register != None)
@@ -277,4 +292,59 @@ void x86_64MicrosoftDefault::RestoreCallArguments(CRegisters* registers)
 		offset += 8;
 	}
 	m_pSavedCallArguments.pop_back();
+}
+
+void x86_64MicrosoftDefault::BeginCallContext(CRegisters* registers)
+{
+	m_callArgumentContexts.emplace_back();
+	if (!registers)
+		return;
+
+	bool returnUsesXmm0 =
+		m_returnType.custom_register == XMM0 ||
+		(m_returnType.custom_register == None &&
+			(m_returnType.type == DATA_TYPE_FLOAT ||
+				m_returnType.type == DATA_TYPE_DOUBLE));
+	if (!returnUsesXmm0)
+		return;
+
+	CallArgumentContext& context = m_callArgumentContexts.back();
+	for (std::size_t i = 0; i < m_vecArgTypes.size(); i++)
+	{
+		if (m_vecArgTypes[i].custom_register != XMM0)
+			continue;
+
+		void* argument = GetLiveArgumentPtr(
+			static_cast<unsigned int>(i),
+			registers);
+		if (!argument)
+			return;
+
+		context.aliasedArgument = i;
+		context.aliasedValue = std::make_unique<uint8_t[]>(8);
+		memcpy(context.aliasedValue.get(), argument, 8);
+		return;
+	}
+}
+
+void x86_64MicrosoftDefault::ApplyCallArguments(CRegisters* registers)
+{
+	if (!registers || m_callArgumentContexts.empty())
+		return;
+
+	CallArgumentContext& context = m_callArgumentContexts.back();
+	if (!context.aliasedValue)
+		return;
+
+	void* argument = GetLiveArgumentPtr(
+		static_cast<unsigned int>(context.aliasedArgument),
+		registers);
+	if (argument)
+		memcpy(argument, context.aliasedValue.get(), 8);
+}
+
+void x86_64MicrosoftDefault::EndCallContext()
+{
+	if (!m_callArgumentContexts.empty())
+		m_callArgumentContexts.pop_back();
 }

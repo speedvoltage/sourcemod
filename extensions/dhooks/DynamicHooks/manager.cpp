@@ -42,8 +42,11 @@
 // ============================================================================
 CHook* CHookManager::HookFunction(void* pFunc, ICallingConvention* pConvention)
 {
-	if (!pFunc)
+	if (!pFunc || !pConvention || !pConvention->IsValid())
+	{
+		delete pConvention;
 		return NULL;
+	}
 
 	CHook* pHook = FindHook(pFunc);
 	if (pHook)
@@ -53,6 +56,11 @@ CHook* CHookManager::HookFunction(void* pFunc, ICallingConvention* pConvention)
 	}
 	
 	pHook = new CHook(pFunc, pConvention);
+	if (!pHook->IsInstalled())
+	{
+		delete pHook;
+		return NULL;
+	}
 	m_Hooks.push_back(pHook);
 	return pHook;
 }

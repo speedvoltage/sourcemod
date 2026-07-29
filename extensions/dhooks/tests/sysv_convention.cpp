@@ -154,8 +154,9 @@ namespace
 			"void return has no value register");
 		Expect(
 			HasRegister(floatConvention.GetRegisters(), XMM0) &&
-			!HasRegister(floatConvention.GetRegisters(), RAX),
-			"return register set matches the return class");
+			HasRegister(floatConvention.GetRegisters(), RAX) &&
+			HasRegister(voidConvention.GetRegisters(), RAX),
+			"RAX is preserved for the SysV variadic vector count");
 	}
 
 	void TestNestedSnapshots()
@@ -174,6 +175,9 @@ namespace
 
 		convention.SaveCallArguments(&registers);
 		convention.SaveReturnValue(&registers);
+		std::uintptr_t nestedStack[] = {0, 117};
+		registers.m_rsp->SetValue<std::uintptr_t>(
+			reinterpret_cast<std::uintptr_t>(nestedStack));
 		for (unsigned int i = 0; i < 7; i++)
 			*reinterpret_cast<std::uint64_t *>(
 				convention.GetArgumentPtr(i, &registers)) = i + 101;
@@ -182,6 +186,9 @@ namespace
 
 		convention.SaveCallArguments(&registers);
 		convention.SaveReturnValue(&registers);
+		std::uintptr_t noiseStack[] = {0, 217};
+		registers.m_rsp->SetValue<std::uintptr_t>(
+			reinterpret_cast<std::uintptr_t>(noiseStack));
 		for (unsigned int i = 0; i < 7; i++)
 			*reinterpret_cast<std::uint64_t *>(
 				convention.GetArgumentPtr(i, &registers)) = i + 201;
@@ -191,6 +198,9 @@ namespace
 		convention.RestoreCallArguments(&registers);
 		convention.RestoreReturnValue(&registers);
 		bool inner = true;
+		inner =
+			registers.m_rsp->GetValue<std::uintptr_t>() ==
+			reinterpret_cast<std::uintptr_t>(nestedStack);
 		for (unsigned int i = 0; i < 7; i++)
 			inner = inner &&
 				*reinterpret_cast<std::uint64_t *>(
@@ -202,6 +212,9 @@ namespace
 		convention.RestoreCallArguments(&registers);
 		convention.RestoreReturnValue(&registers);
 		bool outer = true;
+		outer =
+			registers.m_rsp->GetValue<std::uintptr_t>() ==
+			reinterpret_cast<std::uintptr_t>(stack);
 		for (unsigned int i = 0; i < 7; i++)
 			outer = outer &&
 				*reinterpret_cast<std::uint64_t *>(

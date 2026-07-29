@@ -53,6 +53,7 @@ class SMConfig(object):
     self.all_targets = []
     self.target_archs = set()
     self.enable_asan = getattr(builder.options, 'enable_asan', False)
+    self.enable_dhooks_x64 = getattr(builder.options, 'enable_dhooks_x64', False)
     self.asan_libs = {}
     self.libsafetyhook = {}
 

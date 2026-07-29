@@ -288,6 +288,18 @@ public:
 		m_pSavedCallArguments.pop_back();
 	}
 
+	virtual void BeginCallContext(CRegisters *)
+	{
+	}
+
+	virtual void ApplyCallArguments(CRegisters *)
+	{
+	}
+
+	virtual void EndCallContext()
+	{
+	}
+
 protected:
 	void SetError(const char *error)
 	{

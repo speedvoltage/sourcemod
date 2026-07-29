@@ -131,4 +131,6 @@ public:
 extern SourceHook::IHookManagerAutoGen *g_pHookManager;
 extern sp_nativeinfo_t g_Natives[];
 extern std::thread::id g_MainThreadId;
+extern bool g_DHooksShuttingDown;
+extern bool g_DHooksMapEnding;
 #endif // _INCLUDE_SOURCEMOD_EXTENSION_PROPER_H_

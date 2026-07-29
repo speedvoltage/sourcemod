@@ -60,9 +60,21 @@ public:
 
 	virtual void SaveCallArguments(CRegisters* pRegisters) override;
 	virtual void RestoreCallArguments(CRegisters* pRegisters) override;
+	virtual void BeginCallContext(CRegisters* registers) override;
+	virtual void ApplyCallArguments(CRegisters* registers) override;
+	virtual void EndCallContext() override;
 
 protected:
+	struct CallArgumentContext
+	{
+		std::size_t aliasedArgument = static_cast<std::size_t>(-1);
+		std::unique_ptr<uint8_t[]> aliasedValue;
+	};
+
+	void* GetLiveArgumentPtr(unsigned int index, CRegisters* registers);
+
 	std::uint32_t m_stackArgs;
+	std::vector<CallArgumentContext> m_callArgumentContexts;
 };
 
 #endif // _X86_64_MICROSOFT_DEFAULT_H

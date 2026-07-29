@@ -47,9 +47,13 @@ HandleType_t g_HookParamsHandle = 0;
 HandleType_t g_HookReturnHandle = 0;
 
 std::thread::id g_MainThreadId;
+bool g_DHooksShuttingDown;
+bool g_DHooksMapEnding;
 
 bool DHooks::SDK_OnLoad(char *error, size_t maxlength, bool late)
 {
+	g_DHooksShuttingDown = false;
+	g_DHooksMapEnding = false;
 	HandleError err;
 	g_HookSetupHandle = handlesys->CreateType("HookSetup", this, 0, NULL, NULL, myself->GetIdentity(), &err);
 	if(g_HookSetupHandle == 0)
@@ -93,6 +97,8 @@ bool DHooks::SDK_OnLoad(char *error, size_t maxlength, bool late)
 	g_pEntityListener = new DHooksEntityListener();
 	g_pSignatures = new SignatureGameConfig();
 	g_MainThreadId = std::this_thread::get_id();
+	StartDetourRemovalFrameHook();
+	StartEntityHookRemovalFrameHook();
 
 	return true;
 }
@@ -128,18 +134,25 @@ void DHooks::SDK_OnAllLoaded()
 
 void DHooks::SDK_OnUnload()
 {
-	CleanupHooks();
-	CleanupDetours();
+	g_DHooksShuttingDown = true;
 	if(g_pEntityListener)
 	{
 		g_pEntityListener->CleanupListeners();
-		g_pEntityListener->CleanupRemoveList();
 		if (g_pSDKHooks)
 		{
 			g_pSDKHooks->RemoveEntityListener(g_pEntityListener);
 		}
+	}
+	CleanupHooks();
+	StopEntityHookRemovalFrameHook();
+	CleanupDetours();
+	StopDetourRemovalFrameHook();
+	if(g_pEntityListener)
+	{
+		g_pEntityListener->CleanupRemoveList();
 		delete g_pEntityListener;
 	}
+	ShutdownVHooks();
 	plsys->RemovePluginsListener(this);
 
 	handlesys->RemoveType(g_HookSetupHandle, myself->GetIdentity());
@@ -161,12 +174,12 @@ bool DHooks::SDK_OnMetamodLoad(ISmmAPI *ismm, char *error, size_t maxlength, boo
 
 void DHooks::OnPluginUnloaded(IPlugin *plugin)
 {
-	CleanupHooks(plugin->GetBaseContext());
 	RemoveAllCallbacksForContext(plugin->GetBaseContext());
 	if(g_pEntityListener)
 	{
 		g_pEntityListener->CleanupListeners(plugin->GetBaseContext());
 	}
+	CleanupHooks(plugin->GetBaseContext());
 }
 // The next 3 functions handle cleanup if our interfaces are going to be unloaded
 bool DHooks::QueryRunning(char *error, size_t maxlength)

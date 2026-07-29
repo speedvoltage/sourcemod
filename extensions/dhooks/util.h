@@ -79,7 +79,7 @@ void * GetObjectAddr(HookParamType type, unsigned int flags, void **params, size
 size_t GetParamTypeSize(HookParamType type);
 size_t GetParamsSize(DHooksCallback *dg);
 
-DataType_t DynamicHooks_ConvertParamTypeFrom(HookParamType type);
-DataType_t DynamicHooks_ConvertReturnTypeFrom(ReturnType type);
+bool DynamicHooks_ConvertParamTypeFrom(HookParamType type, DataType_t *result);
+bool DynamicHooks_ConvertReturnTypeFrom(ReturnType type, DataType_t *result);
 Register_t DynamicHooks_ConvertRegisterFrom(PluginRegister reg);
 #endif

@@ -36,28 +36,51 @@ using namespace SourceHook;
 
 std::vector<EntityListener> g_EntityListeners;
 std::vector<DHooksManager *>g_pRemoveList;
+bool g_EntityHookRemovalFrameHookRegistered;
 
-void FrameCleanupHooks(void *data)
+void FrameCleanupHooks(bool)
 {
-	for (int i = g_pRemoveList.size() - 1; i >= 0; i--)
-	{
-		DHooksManager *manager = g_pRemoveList.at(i);
+	std::vector<DHooksManager *> removals;
+	removals.swap(g_pRemoveList);
+	for (DHooksManager *manager : removals)
 		delete manager;
-		g_pRemoveList.erase(g_pRemoveList.begin() + i);
+}
+
+void StartEntityHookRemovalFrameHook()
+{
+	if (g_EntityHookRemovalFrameHookRegistered)
+		return;
+	smutils->AddGameFrameHook(FrameCleanupHooks);
+	g_EntityHookRemovalFrameHookRegistered = true;
+}
+
+void StopEntityHookRemovalFrameHook()
+{
+	if (g_EntityHookRemovalFrameHookRegistered)
+	{
+		smutils->RemoveGameFrameHook(FrameCleanupHooks);
+		g_EntityHookRemovalFrameHookRegistered = false;
 	}
+	FrameCleanupHooks(false);
 }
 
 void DHooks::OnCoreMapEnd()
 {
+	g_DHooksMapEnding = true;
+	std::vector<DHooksManager *> removals;
 	for(int i = g_pHooks.size() -1; i >= 0; i--)
 	{
 		DHooksManager *manager = g_pHooks.at(i);
-		if(manager->callback->hookType == HookType_GameRules)
-		{
-			delete manager;
-			g_pHooks.erase(g_pHooks.begin() + i);
-		}
+		if(manager->callback->hookType != HookType_GameRules)
+			continue;
+
+		manager->callback->enabled.store(false, std::memory_order_release);
+		removals.push_back(manager);
+		g_pHooks.erase(g_pHooks.begin() + i);
 	}
+	for (DHooksManager *manager : removals)
+		delete manager;
+	g_DHooksMapEnding = false;
 }
 
 void DHooksEntityListener::CleanupListeners(IPluginContext *pContext)
@@ -75,7 +98,15 @@ void DHooksEntityListener::CleanupListeners(IPluginContext *pContext)
 		IPluginFunction *cb = manager->callback->plugin_callback;
 		if (pContext == NULL || (cb && pContext == cb->GetParentRuntime()->GetDefaultContext()))
 		{
+			manager->callback->enabled.store(false, std::memory_order_release);
 			manager->callback->plugin_callback = nullptr;
+		}
+
+		IPluginFunction *removeCallback = manager->remove_callback;
+		if (pContext == NULL ||
+			(removeCallback &&
+			 pContext == removeCallback->GetParentRuntime()->GetDefaultContext()))
+		{
 			manager->remove_callback = nullptr;
 		}
 	}
@@ -83,12 +114,10 @@ void DHooksEntityListener::CleanupListeners(IPluginContext *pContext)
 
 void DHooksEntityListener::CleanupRemoveList()
 {
-	for (int i = g_pRemoveList.size() - 1; i >= 0; i--)
-	{
-		DHooksManager *manager = g_pRemoveList.at(i);
+	std::vector<DHooksManager *> removals;
+	removals.swap(g_pRemoveList);
+	for (DHooksManager *manager : removals)
 		delete manager;
-	}
-	g_pRemoveList.clear();
 }
 
 void DHooksEntityListener::OnEntityCreated(CBaseEntity *pEntity, const char *classname)
@@ -128,11 +157,7 @@ void DHooksEntityListener::OnEntityDestroyed(CBaseEntity *pEntity)
 		DHooksManager *manager = g_pHooks.at(i);
 		if(manager->callback->hookType == HookType_Entity && manager->callback->entity == entity)
 		{
-			if(g_pRemoveList.size() == 0)
-			{
-				smutils->AddFrameAction(&FrameCleanupHooks, NULL);
-			}
-
+			manager->callback->enabled.store(false, std::memory_order_release);
 			g_pRemoveList.push_back(manager);
 			g_pHooks.erase(g_pHooks.begin() + i);
 		}

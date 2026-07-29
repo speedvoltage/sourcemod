@@ -12,7 +12,7 @@ download_mysql_debug=1
 # ./checkout-deps.sh -m
 # Disable downloading of mysql debug libraries on Windows.
 # ./checkout-deps.sh -d
-while getopts ":s:m" opt; do
+while getopts ":s:md" opt; do
   case $opt in
     s) IFS=', ' read -r -a sdks <<< "$OPTARG"
     ;;

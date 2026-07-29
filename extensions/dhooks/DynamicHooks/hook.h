@@ -159,6 +159,7 @@ public:
 	Checks if there are any hook handlers added to this hook.
 	*/
 	bool AreCallbacksRegistered();
+	bool IsInstalled() const;
 
 	template<class T>
 	T GetArgument(int iIndex)
@@ -198,8 +199,14 @@ private:
 	void Write_SaveRegisters(SourceHook::Asm::x64JitWriter& jit, HookType_t type);
 	void Write_RestoreRegisters(SourceHook::Asm::x64JitWriter& jit, HookType_t type);
 
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+	SourceHook::CPageAlloc m_bridgeAllocator{16};
+	SourceHook::Asm::x64JitWriter m_bridge{&m_bridgeAllocator};
+	SourceHook::Asm::x64JitWriter m_postCallback{&m_bridgeAllocator};
+#else
 	SourceHook::Asm::x64JitWriter m_bridge;
 	SourceHook::Asm::x64JitWriter m_postCallback;
+#endif
 #else
 	void Write_ModifyReturnAddress(sp::MacroAssembler& masm);
 	void Write_CallHandler(sp::MacroAssembler& masm, HookType_t type);
@@ -217,24 +224,24 @@ public:
 	HookTypeMap m_hookHandler;
 
 	// Address of the original function
-	void* m_pFunc;
+	void* m_pFunc = nullptr;
 
-	ICallingConvention* m_pCallingConvention;
+	ICallingConvention* m_pCallingConvention = nullptr;
 
 	// SafetyHook
 	SafetyHookInline m_Hook{};
 
 	// Address of the bridge
-	void* m_pBridge;
+	void* m_pBridge = nullptr;
 
 	// Address of the trampoline
-	void* m_pTrampoline;
+	void* m_pTrampoline = nullptr;
 
 	// Register storage
-	CRegisters* m_pRegisters;
+	CRegisters* m_pRegisters = nullptr;
 
 	// New return address
-	void* m_pNewRetAddr;
+	void* m_pNewRetAddr = nullptr;
 
 	ReturnAddressMap m_RetAddr;
 

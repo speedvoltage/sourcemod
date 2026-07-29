@@ -1,6 +1,35 @@
 import os
 
 for cxx in builder.targets:
+  if (cxx.target.platform in ['linux', 'windows'] and
+      cxx.target.arch == 'x86_64'):
+    binary = SM.Program(builder, cxx, 'dhooks_microsoft_convention')
+    binary.compiler.defines += [
+      'DYNAMICHOOKS_x86_64',
+      'META_NO_HL2SDK',
+      'HAVE_STRING_H',
+    ]
+    binary.compiler.cxxincludes += [
+      os.path.join(SM.mms_root, 'core'),
+      os.path.join(SM.mms_root, 'core', 'sourcehook'),
+      os.path.join(builder.sourcePath, 'extensions', 'dhooks'),
+      os.path.join(builder.sourcePath, 'public'),
+      os.path.join(builder.sourcePath, 'public', 'amtl'),
+      os.path.join(builder.sourcePath, 'public', 'amtl', 'amtl'),
+      os.path.join(builder.sourcePath, 'public', 'extensions'),
+      os.path.join(builder.sourcePath, 'extensions', 'dhooks', 'DynamicHooks'),
+      os.path.join(builder.sourcePath, 'sourcepawn', 'include'),
+      os.path.join(builder.sourcePath, 'sourcepawn', 'vm'),
+    ]
+    if binary.compiler.like('gcc'):
+      binary.compiler.cflags += ['-Wno-unused-parameter']
+    binary.sources += [
+      'microsoft_convention.cpp',
+      os.path.join('..', 'DynamicHooks', 'registers.cpp'),
+      os.path.join('..', 'DynamicHooks', 'conventions', 'x86_64MicrosoftDefault.cpp'),
+    ]
+    builder.Add(binary)
+
   if cxx.target.platform != 'linux':
     continue
   if cxx.target.arch not in ['x86', 'x86_64']:
@@ -14,6 +43,58 @@ for cxx in builder.targets:
   builder.Add(binary)
 
   if cxx.target.arch == 'x86_64':
+    if SM.enable_dhooks_x64:
+      binary = SM.Program(builder, cxx, 'dhooks_sysv_bridge')
+      binary.compiler.cxxincludes += [
+        os.path.join(SM.mms_root, 'core'),
+        os.path.join(SM.mms_root, 'core', 'sourcehook'),
+      ]
+      if binary.compiler.like('gcc'):
+        binary.compiler.cflags += ['-Wno-sign-compare']
+      binary.sources += [
+        'sysv_bridge.cpp',
+      ]
+      builder.Add(binary)
+
+      binary = SM.Program(builder, cxx, 'dhooks_sysv_hook_bridge')
+      binary.compiler.defines += [
+        'DYNAMICHOOKS_x86_64',
+        'DHOOKS_DYNAMIC_DETOUR',
+        'META_NO_HL2SDK',
+        'HAVE_STRING_H',
+      ]
+      binary.compiler.cxxincludes += [
+        os.path.join(SM.mms_root, 'core'),
+        os.path.join(SM.mms_root, 'core', 'sourcehook'),
+        os.path.join(builder.sourcePath, 'extensions', 'dhooks'),
+        os.path.join(builder.sourcePath, 'extensions', 'dhooks', 'DynamicHooks'),
+        os.path.join(builder.sourcePath, 'public'),
+        os.path.join(builder.sourcePath, 'public', 'amtl'),
+        os.path.join(builder.sourcePath, 'public', 'amtl', 'amtl'),
+        os.path.join(builder.sourcePath, 'public', 'extensions'),
+        os.path.join(builder.sourcePath, 'public', 'safetyhook', 'include'),
+        os.path.join(builder.sourcePath, 'sourcepawn', 'include'),
+        os.path.join(builder.sourcePath, 'sourcepawn', 'vm'),
+      ]
+      if binary.compiler.like('gcc'):
+        binary.compiler.cflags += [
+          '-Wno-invalid-offsetof',
+          '-Wno-sign-compare',
+        ]
+      binary.sources += [
+        'sysv_hook_bridge.cpp',
+        'sysv_hook_targets.cpp',
+        os.path.join('..', 'DynamicHooks', 'hook.cpp'),
+        os.path.join('..', 'DynamicHooks', 'manager.cpp'),
+        os.path.join('..', 'DynamicHooks', 'registers.cpp'),
+        os.path.join('..', 'DynamicHooks', 'conventions', 'x86_64SystemVDefault.cpp'),
+      ]
+      for task in SM.libsafetyhook:
+        if task.target.arch == binary.compiler.target.arch:
+          binary.compiler.linkflags += [task.binary]
+          break
+      builder.Add(binary)
+
     binary = SM.Program(builder, cxx, 'dhooks_sysv_convention')
     binary.compiler.defines += [
       'DYNAMICHOOKS_x86_64',
@@ -28,3 +109,31 @@ for cxx in builder.targets:
       os.path.join('..', 'DynamicHooks', 'conventions', 'x86_64SystemVDefault.cpp'),
     ]
     builder.Add(binary)
+
+    if SM.enable_dhooks_x64:
+      binary = SM.Program(builder, cxx, 'dhooks_sysv_vhook_thunk')
+      binary.compiler.defines += [
+        'META_NO_HL2SDK',
+        'HAVE_STRING_H',
+      ]
+      binary.compiler.cxxincludes += [
+        os.path.join(SM.mms_root, 'core'),
+        os.path.join(SM.mms_root, 'core', 'sourcehook'),
+        os.path.join(builder.sourcePath, 'extensions', 'dhooks'),
+        os.path.join(builder.sourcePath, 'extensions', 'dhooks', 'DynamicHooks'),
+        os.path.join(builder.sourcePath, 'public'),
+        os.path.join(builder.sourcePath, 'public', 'amtl'),
+        os.path.join(builder.sourcePath, 'public', 'amtl', 'amtl'),
+        os.path.join(builder.sourcePath, 'public', 'extensions'),
+        os.path.join(builder.sourcePath, 'sourcepawn', 'include'),
+        os.path.join(builder.sourcePath, 'sourcepawn', 'vm'),
+      ]
+      if binary.compiler.like('gcc'):
+        binary.compiler.cflags += [
+          '-Wno-invalid-offsetof',
+          '-Wno-sign-compare',
+        ]
+      binary.sources += [
+        'sysv_vhook_thunk.cpp',
+      ]
+      builder.Add(binary)

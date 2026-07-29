@@ -37,6 +37,8 @@
 #include <sh_vector.h>
 #include <sourcehook_pibuilder.h>
 #include <registers.h>
+#include <atomic>
+#include <limits>
 #include <vector>
 
 #ifdef KE_ARCH_X64
@@ -124,6 +126,15 @@ enum HookType
 	HookType_Raw
 };
 
+static inline bool IsVHookMainThread()
+{
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	return g_MainThreadId == std::this_thread::get_id();
+#else
+	return true;
+#endif
+}
+
 struct ParamInfo
 {
 	HookParamType type;
@@ -170,12 +181,23 @@ class DHooksCallback : public SourceHook::ISHDelegate, public DHooksInfo
 {
 public:
 	DHooksCallback()
+		: newvtable(nullptr),
+		  oldvtable(nullptr),
+		  retained(false),
+		  enabled(true)
+#ifdef KE_ARCH_X64
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+		  , callThunkAllocator(16)
+#endif
+		  , callThunk(nullptr)
+#endif
 	{
 		//g_pSM->LogMessage(myself, "DHooksCallback(%p)", this);
 	}
 
     virtual bool IsEqual(ISHDelegate *pOtherDeleg){return false;};
-    virtual void DeleteThis()
+    virtual void DeleteThis();
+	void DestroyThis()
 	{
 		*(void ***)this = this->oldvtable;
 #ifdef KE_ARCH_X64
@@ -183,14 +205,19 @@ public:
 #else
 		g_pSM->GetScriptingEngine()->FreePageMemory(this->newvtable[2]);
 #endif
-		delete this->newvtable;
+		delete[] this->newvtable;
 		delete this;
 	};
 	virtual void Call() {};
 public:
 	void **newvtable;
 	void **oldvtable;
+	std::atomic<bool> retained;
+	std::atomic<bool> enabled;
 #ifdef KE_ARCH_X64
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+	SourceHook::CPageAlloc callThunkAllocator;
+#endif
 	SourceHook::Asm::x64JitWriter* callThunk;
 #endif
 };
@@ -207,6 +234,7 @@ string_t *Callback_stringt(DHooksCallback *dg, void **stack);
 #endif
 
 bool SetupHookManager(ISmmAPI *ismm);
+void ShutdownVHooks();
 void CleanupHooks(IPluginContext *pContext = NULL);
 size_t GetParamTypeSize(HookParamType type);
 SourceHook::PassInfo::PassType GetParamTypePassType(HookParamType type);
@@ -280,9 +308,163 @@ public:
 	HookMethod hookMethod;
 };
 
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+static inline SourceHook::Asm::x64JitWriter *GenerateSysVVHookThunk(
+	HookSetup *hook,
+	SourceHook::CPageAlloc *allocator,
+	uint64_t callback,
+	uint64_t floatCallback)
+{
+	if (hook->returnType == ReturnType_Unknown ||
+		hook->returnType == ReturnType_String ||
+		hook->returnType == ReturnType_Vector ||
+		(hook->returnType != ReturnType_Void &&
+		 (hook->returnFlag & (PASSFLAG_BYVAL | PASSFLAG_BYREF)) !=
+			 PASSFLAG_BYVAL) ||
+		(hook->returnFlag & ~(PASSFLAG_BYVAL | PASSFLAG_BYREF)) != 0 ||
+		hook->params.size() >
+			static_cast<size_t>(
+				(std::numeric_limits<int32_t>::max() - 16) /
+				static_cast<int32_t>(sizeof(uint64_t))))
+	{
+		return nullptr;
+	}
+
+	for (size_t i = 0; i < hook->params.size(); i++)
+	{
+		const ParamInfo& param = hook->params[i];
+		const unsigned int passing =
+			param.flags & (PASSFLAG_BYVAL | PASSFLAG_BYREF);
+		if (param.custom_register != None ||
+			passing != PASSFLAG_BYVAL ||
+			(param.flags & ~(PASSFLAG_BYVAL | PASSFLAG_BYREF)) != 0 ||
+			param.size == 0 ||
+			param.size > sizeof(uint64_t) ||
+			param.type == HookParamType_Unknown ||
+			param.type == HookParamType_Object ||
+			(param.pass_type != SourceHook::PassInfo::PassType_Basic &&
+			 param.pass_type != SourceHook::PassInfo::PassType_Float) ||
+			(param.pass_type == SourceHook::PassInfo::PassType_Float &&
+			 param.size != sizeof(float) &&
+			 param.size != sizeof(double)) ||
+			(param.pass_type == SourceHook::PassInfo::PassType_Basic &&
+			 param.size != 1 &&
+			 param.size != 2 &&
+			 param.size != 4 &&
+			 param.size != 8))
+		{
+			return nullptr;
+		}
+	}
+
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+	auto masm = new SourceHook::Asm::x64JitWriter(allocator);
+#else
+	(void)allocator;
+	auto masm = new SourceHook::Asm::x64JitWriter();
+#endif
+	const int32_t bufferSize =
+		static_cast<int32_t>(hook->params.size() * sizeof(uint64_t));
+	const int32_t frameSize = static_cast<int32_t>(
+		ke::Align(
+			bufferSize + static_cast<int32_t>(sizeof(void *)),
+			16));
+	static const SourceHook::Asm::x86_64_Reg argRegisters[] = {
+		SourceHook::Asm::rsi,
+		SourceHook::Asm::rdx,
+		SourceHook::Asm::rcx,
+		SourceHook::Asm::r8,
+		SourceHook::Asm::r9
+	};
+	static const SourceHook::Asm::x86_64_FloatReg floatRegisters[] = {
+		SourceHook::Asm::xmm0,
+		SourceHook::Asm::xmm1,
+		SourceHook::Asm::xmm2,
+		SourceHook::Asm::xmm3,
+		SourceHook::Asm::xmm4,
+		SourceHook::Asm::xmm5,
+		SourceHook::Asm::xmm6,
+		SourceHook::Asm::xmm7
+	};
+	int gprIndex = 0;
+	int sseIndex = 0;
+	int stackIndex = 0;
+
+	masm->push(SourceHook::Asm::rbp);
+	masm->mov(SourceHook::Asm::rbp, SourceHook::Asm::rsp);
+	masm->sub(SourceHook::Asm::rsp, frameSize);
+	masm->mov(SourceHook::Asm::rsp(bufferSize), SourceHook::Asm::rdi);
+
+	for (size_t i = 0; i < hook->params.size(); i++)
+	{
+		const ParamInfo& param = hook->params[i];
+		const bool isFloat =
+			param.pass_type == SourceHook::PassInfo::PassType_Float;
+
+		const int32_t slotOffset = static_cast<int32_t>(i * 8);
+		masm->mov(SourceHook::Asm::rsp(slotOffset), 0);
+		if (isFloat && sseIndex < 8)
+		{
+			if (param.size == sizeof(float))
+				masm->movss(
+					SourceHook::Asm::rsp(slotOffset),
+					floatRegisters[sseIndex]);
+			else
+				masm->movsd(
+					SourceHook::Asm::rsp(slotOffset),
+					floatRegisters[sseIndex]);
+			sseIndex++;
+		}
+		else if (!isFloat && gprIndex < 5)
+		{
+			masm->mov(
+				SourceHook::Asm::rsp(slotOffset),
+				argRegisters[gprIndex]);
+			gprIndex++;
+		}
+		else
+		{
+			if (isFloat && param.size == sizeof(float))
+			{
+				masm->movss(
+					SourceHook::Asm::xmm0,
+					SourceHook::Asm::rbp(16 + stackIndex * 8));
+				masm->movss(
+					SourceHook::Asm::rsp(slotOffset),
+					SourceHook::Asm::xmm0);
+			}
+			else
+			{
+				masm->mov(
+					SourceHook::Asm::rax,
+					SourceHook::Asm::rbp(16 + stackIndex * 8));
+				masm->mov(
+					SourceHook::Asm::rsp(slotOffset),
+					SourceHook::Asm::rax);
+			}
+			stackIndex++;
+		}
+	}
+
+	masm->mov(SourceHook::Asm::rdi, SourceHook::Asm::rsp(bufferSize));
+	masm->mov(SourceHook::Asm::rsi, SourceHook::Asm::rsp);
+	masm->mov(
+		SourceHook::Asm::rax,
+		hook->returnType == ReturnType_Float
+			? floatCallback
+			: callback);
+	masm->call(SourceHook::Asm::rax);
+	masm->add(SourceHook::Asm::rsp, frameSize);
+	masm->pop(SourceHook::Asm::rbp);
+	masm->retn();
+	masm->SetRE();
+	return masm;
+}
+#endif
+
 #ifdef KE_ARCH_X64
-SourceHook::Asm::x64JitWriter* GenerateThunk(HookSetup* type);
-static DHooksCallback *MakeHandler(HookSetup* hook)
+SourceHook::Asm::x64JitWriter* GenerateThunk(HookSetup* type, SourceHook::CPageAlloc* allocator);
+static inline DHooksCallback *MakeHandler(HookSetup* hook)
 {
 	DHooksCallback *dg = new DHooksCallback();
 	dg->returnType = hook->returnType;
@@ -290,14 +472,24 @@ static DHooksCallback *MakeHandler(HookSetup* hook)
 	dg->newvtable = new void *[3];
 	dg->newvtable[0] = dg->oldvtable[0];
 	dg->newvtable[1] = dg->oldvtable[1];
-	dg->callThunk = GenerateThunk(hook);
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+	dg->callThunk = GenerateThunk(hook, &dg->callThunkAllocator);
+#else
+	dg->callThunk = GenerateThunk(hook, nullptr);
+#endif
+	if (!dg->callThunk)
+	{
+		delete[] dg->newvtable;
+		delete dg;
+		return nullptr;
+	}
 	dg->newvtable[2] = dg->callThunk->GetData();
 	*(void ***)dg = dg->newvtable;
 	return dg;
 }
 #else
 void *GenerateThunk(HookSetup* type);
-static DHooksCallback *MakeHandler(HookSetup* hook)
+static inline DHooksCallback *MakeHandler(HookSetup* hook)
 {
 	DHooksCallback *dg = new DHooksCallback();
 	dg->returnType = hook->returnType;
@@ -315,22 +507,7 @@ class DHooksManager
 {
 public:
 	DHooksManager(HookSetup *setup, void *iface, IPluginFunction *remove_callback, IPluginFunction *plugincb, bool post);
-	~DHooksManager()
-	{
-		if(this->hookid)
-		{
-			g_SHPtr->RemoveHookByID(this->hookid);
-			if(this->remove_callback)
-			{
-				this->remove_callback->PushCell(this->hookid);
-				this->remove_callback->Execute(NULL);
-			}
-			if(this->pManager)
-			{
-				g_pHookManager->ReleaseHookMan(this->pManager);
-			}
-		}
-	}
+	~DHooksManager();
 public:
 	intptr_t addr;
 	int hookid;

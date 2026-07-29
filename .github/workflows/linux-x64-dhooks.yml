@@ -43,6 +43,7 @@ jobs:
           cd '${{ steps.paths.outputs.dependencies }}'
           ../sourcemod/tools/checkout-deps.sh -m -s '${{ env.SDKS }}'
           git -C 'mmsource-${{ env.MMSOURCE_VERSION }}' checkout --detach '${{ env.MMSOURCE_REF }}'
+          git -C 'mmsource-${{ env.MMSOURCE_VERSION }}' submodule update --init --recursive
           git -C hl2sdk-hl2dm checkout --detach '${{ env.HL2SDK_HL2DM_REF }}'
 
       - name: Record dependencies
@@ -103,6 +104,13 @@ jobs:
           file dhooks_sysv_convention | grep -q 'ELF 64-bit'
           ./dhooks_sysv_convention
 
+      - name: Run Microsoft x64 convention model
+        working-directory: sourcemod/build/extensions/dhooks/tests/dhooks_microsoft_convention/linux-x86_64
+        shell: bash
+        run: |
+          file dhooks_microsoft_convention | grep -q 'ELF 64-bit'
+          ./dhooks_microsoft_convention
+
       - name: Build debug x86
         working-directory: sourcemod
         shell: bash
@@ -125,3 +133,169 @@ jobs:
           path: |
             sourcemod/build/package
             sourcemod/dependency-revisions.txt
+
+  windows-regression:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      SDKS: hl2dm
+      TARGETS: x86,x86_64
+      MMSOURCE_VERSION: "1.12"
+      MMSOURCE_REF: afc8233eedcd0c832b411c1da852328328db5c50
+      HL2SDK_HL2DM_REF: af883d5052349f09fbe641c99149b84769a62d01
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          path: sourcemod
+
+      - name: Resolve paths
+        id: paths
+        shell: bash
+        run: echo "dependencies=$GITHUB_WORKSPACE/dependencies" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          mkdir -p '${{ steps.paths.outputs.dependencies }}/sourcemod'
+          cd '${{ steps.paths.outputs.dependencies }}'
+          ../sourcemod/tools/checkout-deps.sh -m -d -s '${{ env.SDKS }}'
+          git -C 'mmsource-${{ env.MMSOURCE_VERSION }}' checkout --detach '${{ env.MMSOURCE_REF }}'
+          git -C 'mmsource-${{ env.MMSOURCE_VERSION }}' submodule update --init --recursive
+          git -C hl2sdk-hl2dm checkout --detach '${{ env.HL2SDK_HL2DM_REF }}'
+
+      - name: Build Windows regression
+        working-directory: sourcemod
+        shell: bash
+        run: |
+          mkdir build-windows
+          cd build-windows
+          python3 ../configure.py \
+            --enable-optimize \
+            --enable-tests \
+            --no-mysql \
+            --sdks='${{ env.SDKS }}' \
+            --targets='${{ env.TARGETS }}' \
+            '--mms-path=${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}' \
+            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+          ambuild
+          test -f package/addons/sourcemod/extensions/dhooks.ext.dll
+          test -f package/addons/sourcemod/extensions/x64/dhooks.ext.dll
+          extensions/dhooks/tests/dhooks_microsoft_convention/windows-x86_64/dhooks_microsoft_convention.exe
+
+  experimental-dhooks-x64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/alliedmodders/build-containers/debian11-clang22@sha256:52c35568d47abd5974855247a5373b3ee22aaa5db508b873f3fc4d247c9f8f5a
+    env:
+      SDKS: hl2dm
+      TARGETS: x86_64
+      SOURCEHOOK_REF: 4cf7a9c9a876fe4828d7e3f8023e4b66c6b04f14
+      HL2SDK_HL2DM_REF: af883d5052349f09fbe641c99149b84769a62d01
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          path: sourcemod
+
+      - uses: actions/checkout@v7
+        with:
+          repository: speedvoltage/metamod-source
+          ref: ${{ env.SOURCEHOOK_REF }}
+          submodules: recursive
+          path: dependencies/metamod-source
+
+      - name: Resolve paths
+        id: paths
+        shell: bash
+        run: echo "dependencies=$GITHUB_WORKSPACE/dependencies" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        working-directory: dependencies
+        shell: bash
+        run: |
+          ./metamod-source/support/checkout-deps.sh -s '${{ env.SDKS }}'
+          git -C hl2sdk-hl2dm checkout --detach '${{ env.HL2SDK_HL2DM_REF }}'
+          test "$(git -C metamod-source rev-parse HEAD)" = '${{ env.SOURCEHOOK_REF }}'
+
+      - name: Record dependencies
+        shell: bash
+        run: |
+          {
+            git -C sourcemod rev-parse HEAD
+            git -C sourcemod/public/amtl rev-parse HEAD
+            git -C sourcemod/sourcepawn rev-parse HEAD
+            git -C sourcemod/hl2sdk-manifests rev-parse HEAD
+            git -C sourcemod/public/safetyhook rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/metamod-source' rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/metamod-source/third_party/amtl' rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/metamod-source/hl2sdk-manifests' rev-parse HEAD
+            git -C '${{ steps.paths.outputs.dependencies }}/hl2sdk-hl2dm' rev-parse HEAD
+          } | tee sourcemod/experimental-dependency-revisions.txt
+
+      - name: Build experimental SourceHook x64
+        working-directory: dependencies/metamod-source
+        shell: bash
+        run: |
+          mkdir build-experimental-x64
+          cd build-experimental-x64
+          python3 ../configure.py \
+            --enable-optimize \
+            --enable-sourcehook-x64-sysv \
+            --sdks='${{ env.SDKS }}' \
+            --targets='${{ env.TARGETS }}' \
+            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+          ambuild
+          file package/addons/metamod/bin/linux64/metamod.2.hl2dm.so | grep -q 'ELF 64-bit'
+
+      - name: Build experimental DHooks x64
+        working-directory: sourcemod
+        shell: bash
+        run: |
+          mkdir build-experimental-x64
+          cd build-experimental-x64
+          python3 ../configure.py \
+            --enable-optimize \
+            --enable-dhooks-x64 \
+            --enable-tests \
+            --no-mysql \
+            --sdks='${{ env.SDKS }}' \
+            --targets='${{ env.TARGETS }}' \
+            '--mms-path=${{ steps.paths.outputs.dependencies }}/metamod-source' \
+            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+          ambuild
+
+      - name: Verify experimental artifacts
+        working-directory: sourcemod/build-experimental-x64/package
+        shell: bash
+        run: |
+          file addons/sourcemod/bin/x64/sourcemod.2.hl2dm.so | grep -q 'ELF 64-bit'
+          file addons/sourcemod/extensions/x64/dhooks.ext.so | grep -q 'ELF 64-bit'
+          test ! -e addons/sourcemod/extensions/dhooks.ext.so
+
+      - name: Run experimental x64 tests
+        working-directory: sourcemod/build-experimental-x64/extensions/dhooks/tests
+        shell: bash
+        run: |
+          file dhooks_abi_oracle/linux-x86_64/dhooks_abi_oracle | grep -q 'ELF 64-bit'
+          dhooks_abi_oracle/linux-x86_64/dhooks_abi_oracle
+          file dhooks_sysv_bridge/linux-x86_64/dhooks_sysv_bridge | grep -q 'ELF 64-bit'
+          dhooks_sysv_bridge/linux-x86_64/dhooks_sysv_bridge
+          file dhooks_sysv_hook_bridge/linux-x86_64/dhooks_sysv_hook_bridge | grep -q 'ELF 64-bit'
+          dhooks_sysv_hook_bridge/linux-x86_64/dhooks_sysv_hook_bridge
+          file dhooks_microsoft_convention/linux-x86_64/dhooks_microsoft_convention | grep -q 'ELF 64-bit'
+          dhooks_microsoft_convention/linux-x86_64/dhooks_microsoft_convention
+          file dhooks_sysv_convention/linux-x86_64/dhooks_sysv_convention | grep -q 'ELF 64-bit'
+          dhooks_sysv_convention/linux-x86_64/dhooks_sysv_convention
+          file dhooks_sysv_vhook_thunk/linux-x86_64/dhooks_sysv_vhook_thunk | grep -q 'ELF 64-bit'
+          dhooks_sysv_vhook_thunk/linux-x86_64/dhooks_sysv_vhook_thunk
+
+      - name: Upload experimental artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: sourcemod-linux-x64-dhooks-experimental
+          path: |
+            dependencies/metamod-source/build-experimental-x64/package
+            sourcemod/build-experimental-x64/package
+            sourcemod/experimental-dependency-revisions.txt

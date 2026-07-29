@@ -47,6 +47,33 @@ std::vector<DHooksManager *> g_pHooks;
 using namespace SourceHook;
 using namespace sp;
 
+namespace
+{
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	std::vector<DHooksCallback *> g_RetiredVHookCallbacks;
+	std::vector<SourceHook::HookManagerPubFunc> g_RetiredVHookManagers;
+
+	void RetainVHookCallback(DHooksCallback *callback)
+	{
+		bool expected = false;
+		if (callback->retained.compare_exchange_strong(
+				expected,
+				true,
+				std::memory_order_acq_rel))
+			g_RetiredVHookCallbacks.push_back(callback);
+	}
+#endif
+}
+
+void DHooksCallback::DeleteThis()
+{
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	RetainVHookCallback(this);
+#else
+	DestroyThis();
+#endif
+}
+
 #ifdef  WIN32
 #define OBJECT_OFFSET sizeof(void *)
 #else
@@ -56,9 +83,21 @@ using namespace sp;
 #ifdef KE_ARCH_X64
 using namespace SourceHook::Asm;
 
-SourceHook::Asm::x64JitWriter* GenerateThunk(HookSetup* hook)
+SourceHook::Asm::x64JitWriter* GenerateThunk(HookSetup* hook, SourceHook::CPageAlloc* allocator)
 {
+#if !defined(WIN32)
+	return GenerateSysVVHookThunk(
+		hook,
+		allocator,
+		reinterpret_cast<uint64_t>(Callback),
+		reinterpret_cast<uint64_t>(Callback_float));
+#else
+#if defined(SH_X64_JIT_WRITER_REQUIRES_ALLOCATOR)
+	auto masm = new x64JitWriter(allocator);
+#else
+	(void)allocator;
 	auto masm = new x64JitWriter();
+#endif
 	auto type = hook->returnType;
 
 	// We're going to transform rbp into our stack
@@ -131,6 +170,7 @@ SourceHook::Asm::x64JitWriter* GenerateThunk(HookSetup* hook)
 
 	masm->SetRE();
 	return masm;
+#endif
 }
 #elif !defined( WIN32 )
 void *GenerateThunk(HookSetup* hook)
@@ -242,7 +282,12 @@ DHooksManager::DHooksManager(HookSetup *setup, void *iface, IPluginFunction *rem
 {
 	this->callback = MakeHandler(setup);
 	this->hookid = 0;
+	this->pManager = nullptr;
 	this->remove_callback = remove_callback;
+	if (!this->callback)
+	{
+		return;
+	}
 	this->callback->offset = setup->offset;
 	this->callback->plugin_callback = plugincb;
 	this->callback->returnFlag = setup->returnFlag;
@@ -268,9 +313,18 @@ DHooksManager::DHooksManager(HookSetup *setup, void *iface, IPluginFunction *rem
 
 	CProtoInfoBuilder protoInfo(ProtoInfo::CallConv_ThisCall);
 
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	for(size_t i = 0; i < this->callback->params.size(); i++)
+#else
 	for(int i = this->callback->params.size() -1; i >= 0; i--)
+#endif
 	{
-		protoInfo.AddParam(this->callback->params.at(i).size, this->callback->params.at(i).pass_type, PASSFLAG_BYVAL, NULL, NULL, NULL, NULL);//This seems like we need to do something about it at some point...
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+		unsigned int flags = this->callback->params.at(i).flags;
+#else
+		unsigned int flags = PASSFLAG_BYVAL;
+#endif
+		protoInfo.AddParam(this->callback->params.at(i).size, this->callback->params.at(i).pass_type, flags, NULL, NULL, NULL, NULL);
 	}
 
 	if(this->callback->returnType == ReturnType_Void)
@@ -289,27 +343,108 @@ DHooksManager::DHooksManager(HookSetup *setup, void *iface, IPluginFunction *rem
 	{
 		protoInfo.SetReturnType(sizeof(SDKVector), SourceHook::PassInfo::PassType_Object, setup->returnFlag, NULL, NULL, NULL, NULL);
 	}
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	else if(this->callback->returnType == ReturnType_Int)
+	{
+		protoInfo.SetReturnType(sizeof(int), SourceHook::PassInfo::PassType_Basic, setup->returnFlag, NULL, NULL, NULL, NULL);
+	}
+	else if(this->callback->returnType == ReturnType_Bool)
+	{
+		protoInfo.SetReturnType(sizeof(bool), SourceHook::PassInfo::PassType_Basic, setup->returnFlag, NULL, NULL, NULL, NULL);
+	}
+#endif
 	else
 	{
 		protoInfo.SetReturnType(sizeof(void *), SourceHook::PassInfo::PassType_Basic, setup->returnFlag, NULL, NULL, NULL, NULL);
 	}
+	if (!g_pHookManager)
+	{
+		return;
+	}
 	this->pManager = g_pHookManager->MakeHookMan(protoInfo, 0, this->callback->offset);
+	if (!this->pManager)
+	{
+		return;
+	}
 
 	this->hookid = g_SHPtr->AddHook(g_PLID,ISourceHook::Hook_Normal, iface, 0, this->pManager, this->callback, this->callback->post);
 }
 
+DHooksManager::~DHooksManager()
+{
+	if (this->hookid)
+	{
+		this->callback->enabled.store(false, std::memory_order_release);
+		g_SHPtr->RemoveHookByID(this->hookid);
+		IPluginFunction *removeCallback = this->remove_callback;
+		this->remove_callback = nullptr;
+		if (removeCallback)
+		{
+			removeCallback->PushCell(this->hookid);
+			removeCallback->Execute(NULL);
+		}
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+		RetainVHookCallback(this->callback);
+		if (this->pManager)
+			g_RetiredVHookManagers.push_back(this->pManager);
+		this->callback = nullptr;
+		this->pManager = nullptr;
+#endif
+	}
+	else if (this->callback)
+	{
+		this->callback->DestroyThis();
+	}
+	if (this->pManager && g_pHookManager)
+		g_pHookManager->ReleaseHookMan(this->pManager);
+}
+
+void ShutdownVHooks()
+{
+#if defined(KE_ARCH_X64) && !defined(WIN32)
+	for (SourceHook::HookManagerPubFunc manager : g_RetiredVHookManagers)
+		if (g_pHookManager)
+			g_pHookManager->ReleaseHookMan(manager);
+	g_RetiredVHookManagers.clear();
+
+	for (DHooksCallback *callback : g_RetiredVHookCallbacks)
+		callback->DestroyThis();
+	g_RetiredVHookCallbacks.clear();
+#endif
+	g_pHookManager = nullptr;
+}
+
 void CleanupHooks(IPluginContext *pContext)
 {
+	std::vector<DHooksManager *> removals;
 	for(int i = g_pHooks.size() -1; i >= 0; i--)
 	{
 		DHooksManager *manager = g_pHooks.at(i);
-
-		if(pContext == NULL || pContext == manager->callback->plugin_callback->GetParentRuntime()->GetDefaultContext())
+		if (pContext &&
+			manager->remove_callback &&
+			manager->remove_callback->GetParentRuntime()->GetDefaultContext() ==
+				pContext)
 		{
-			delete manager;
-			g_pHooks.erase(g_pHooks.begin() + i);
+			manager->remove_callback = nullptr;
 		}
+
+		IPluginFunction *callback = manager->callback->plugin_callback;
+		if (pContext &&
+			(!callback ||
+			 callback->GetParentRuntime()->GetDefaultContext() != pContext))
+		{
+			continue;
+		}
+
+		manager->callback->enabled.store(false, std::memory_order_release);
+		if (!pContext)
+			manager->remove_callback = nullptr;
+		removals.push_back(manager);
+		g_pHooks.erase(g_pHooks.begin() + i);
 	}
+
+	for (DHooksManager *manager : removals)
+		delete manager;
 }
 
 bool SetupHookManager(ISmmAPI *ismm)
@@ -482,12 +617,41 @@ HookReturnStruct *GetReturnStruct(DHooksCallback *dg)
 	return res;
 }
 
+static void *GetChangedBasicReturn(HookReturnStruct *returnStruct)
+{
+	uintptr_t value = 0;
+	switch (returnStruct->type)
+	{
+		case ReturnType_String:
+			memcpy(&value, returnStruct->newResult, sizeof(string_t));
+			break;
+		case ReturnType_Int:
+			memcpy(&value, returnStruct->newResult, sizeof(int));
+			break;
+		case ReturnType_Bool:
+			memcpy(&value, returnStruct->newResult, sizeof(bool));
+			break;
+		default:
+			return returnStruct->newResult;
+	}
+	return reinterpret_cast<void *>(value);
+}
+
 #if defined( WIN32 ) && !defined( KE_ARCH_X64 )
 void *Callback(DHooksCallback *dg, void **argStack, size_t *argsizep)
 #else
 void *Callback(DHooksCallback *dg, void **argStack)
 #endif
 {
+	if (!IsVHookMainThread() ||
+		!dg->enabled.load(std::memory_order_acquire))
+	{
+#if defined( WIN32 ) && !defined( KE_ARCH_X64 )
+		*argsizep = GetStackArgsSize(dg);
+#endif
+		return nullptr;
+	}
+
 	HookReturnStruct *returnStruct = NULL;
 	HookParamsStruct *paramStruct = NULL;
 	Handle_t rHndl;
@@ -514,7 +678,7 @@ void *Callback(DHooksCallback *dg, void **argStack)
 				std::int64_t addr = reinterpret_cast<std::int64_t>(thisAddr);
 				dg->plugin_callback->PushArray(reinterpret_cast<cell_t*>(&addr), 2);
 			} else {
-				dg->plugin_callback->PushCell((cell_t)thisAddr);
+				dg->plugin_callback->PushCell(static_cast<cell_t>(reinterpret_cast<uintptr_t>(thisAddr)));
 			}
 		}
 	}
@@ -584,7 +748,7 @@ void *Callback(DHooksCallback *dg, void **argStack)
 				{
 					if(dg->returnType == ReturnType_String || dg->returnType == ReturnType_Int || dg->returnType == ReturnType_Bool)
 					{
-						ret = *(void **)returnStruct->newResult;
+						ret = GetChangedBasicReturn(returnStruct);
 					}
 					else
 					{
@@ -613,7 +777,7 @@ void *Callback(DHooksCallback *dg, void **argStack)
 					mres = MRES_OVERRIDE;
 					if(dg->returnType == ReturnType_String || dg->returnType == ReturnType_Int || dg->returnType == ReturnType_Bool)
 					{
-						ret = *(void **)returnStruct->newResult;
+						ret = GetChangedBasicReturn(returnStruct);
 					}
 					else
 					{
@@ -637,7 +801,7 @@ void *Callback(DHooksCallback *dg, void **argStack)
 					mres = MRES_SUPERCEDE;
 					if(dg->returnType == ReturnType_String || dg->returnType == ReturnType_Int || dg->returnType == ReturnType_Bool)
 					{
-						ret = *(void **)returnStruct->newResult;
+						ret = GetChangedBasicReturn(returnStruct);
 					}
 					else
 					{
@@ -686,6 +850,15 @@ float Callback_float(DHooksCallback *dg, void **argStack, size_t *argsizep)
 float Callback_float(DHooksCallback *dg, void **argStack)
 #endif
 {
+	if (!IsVHookMainThread() ||
+		!dg->enabled.load(std::memory_order_acquire))
+	{
+#if defined( WIN32 ) && !defined( KE_ARCH_X64 )
+		*argsizep = GetStackArgsSize(dg);
+#endif
+		return 0.0f;
+	}
+
 	HookReturnStruct *returnStruct = NULL;
 	HookParamsStruct *paramStruct = NULL;
 	Handle_t rHndl;
@@ -712,7 +885,7 @@ float Callback_float(DHooksCallback *dg, void **argStack)
 				std::int64_t addr = reinterpret_cast<std::int64_t>(thisAddr);
 				dg->plugin_callback->PushArray(reinterpret_cast<cell_t*>(&addr), 2);
 			} else {
-				dg->plugin_callback->PushCell((cell_t)thisAddr);
+				dg->plugin_callback->PushCell(static_cast<cell_t>(reinterpret_cast<uintptr_t>(thisAddr)));
 			}
 		}
 	}
@@ -856,6 +1029,14 @@ SDKVector *Callback_vector(DHooksCallback *dg, void **argStack)
 #endif
 {
 	SDKVector *vec_result = (SDKVector *)argStack[0];
+	if (!IsVHookMainThread() ||
+		!dg->enabled.load(std::memory_order_acquire))
+	{
+#if defined( WIN32 ) && !defined( KE_ARCH_X64 )
+		*argsizep = GetStackArgsSize(dg);
+#endif
+		return vec_result;
+	}
 
 	HookReturnStruct *returnStruct = NULL;
 	HookParamsStruct *paramStruct = NULL;
@@ -883,7 +1064,7 @@ SDKVector *Callback_vector(DHooksCallback *dg, void **argStack)
 				std::int64_t addr = reinterpret_cast<std::int64_t>(thisAddr);
 				dg->plugin_callback->PushArray(reinterpret_cast<cell_t*>(&addr), 2);
 			} else {
-				dg->plugin_callback->PushCell((cell_t)thisAddr);
+				dg->plugin_callback->PushCell(static_cast<cell_t>(reinterpret_cast<uintptr_t>(thisAddr)));
 			}
 		}
 	}
@@ -933,8 +1114,6 @@ SDKVector *Callback_vector(DHooksCallback *dg, void **argStack)
 	META_RES mres = MRES_IGNORED;
 	dg->plugin_callback->Execute(&result);
 
-	void *ret = g_SHPtr->GetOverrideRetPtr();
-	ret = vec_result;
 	switch((MRESReturn)result)
 	{
 		case MRES_Handled:
@@ -1029,6 +1208,11 @@ SDKVector *Callback_vector(DHooksCallback *dg, void **argStack)
 string_t *Callback_stringt(DHooksCallback *dg, void **argStack)
 {
 	string_t *string_result = (string_t *)argStack[0]; // Save the result
+	if (!IsVHookMainThread() ||
+		!dg->enabled.load(std::memory_order_acquire))
+	{
+		return string_result;
+	}
 
 	HookReturnStruct *returnStruct = NULL;
 	HookParamsStruct *paramStruct = NULL;
@@ -1051,7 +1235,7 @@ string_t *Callback_stringt(DHooksCallback *dg, void **argStack)
 				std::int64_t addr = reinterpret_cast<std::int64_t>(thisAddr);
 				dg->plugin_callback->PushArray(reinterpret_cast<cell_t*>(&addr), 2);
 			} else {
-				dg->plugin_callback->PushCell((cell_t)thisAddr);
+				dg->plugin_callback->PushCell(static_cast<cell_t>(reinterpret_cast<uintptr_t>(thisAddr)));
 			}
 		}
 	}
@@ -1095,8 +1279,6 @@ string_t *Callback_stringt(DHooksCallback *dg, void **argStack)
 	META_RES mres = MRES_IGNORED;
 	dg->plugin_callback->Execute(&result);
 
-	void *ret = g_SHPtr->GetOverrideRetPtr();
-	ret = string_result;
 	switch((MRESReturn)result)
 	{
 		case MRES_Handled:

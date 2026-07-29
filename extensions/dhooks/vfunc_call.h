@@ -73,7 +73,16 @@ T CallVFunction(DHooksCallback *dg, HookParamsStruct *paramStruct, void *iface)
 	if(dg->returnType != ReturnType_Void)
 	{
 		returnInfo.flags = dg->returnFlag;
+#ifdef KE_ARCH_X64
+		if (dg->returnType == ReturnType_Int)
+			returnInfo.size = sizeof(int);
+		else if (dg->returnType == ReturnType_Bool)
+			returnInfo.size = sizeof(bool);
+		else
+			returnInfo.size = sizeof(T);
+#else
 		returnInfo.size = sizeof(T);
+#endif
 		if( dg->returnType != ReturnType_Vector)
 		{
 			returnInfo.type = PassType_Basic;
@@ -96,9 +105,9 @@ T CallVFunction(DHooksCallback *dg, HookParamsStruct *paramStruct, void *iface)
 	if(paramStruct)
 	{
 		vptr += sizeof(void *);
-		paramInfo = (SourceMod::PassInfo *)malloc(sizeof(SourceMod::PassInfo) * dg->params.size());
+		paramInfo = new SourceMod::PassInfo[dg->params.size()];
 
-		for(int i = 0; i < (int)dg->params.size(); i++)
+		for(size_t i = 0; i < dg->params.size(); i++)
 		{
 			size_t offset = GetParamOffset(paramStruct, i);
 
@@ -112,7 +121,11 @@ T CallVFunction(DHooksCallback *dg, HookParamsStruct *paramStruct, void *iface)
 					VSTK_PARAM_SWITCH(int);
 				case HookParamType_Bool:
 					PARAMINFO_SWITCH(PassType_Basic);
+#ifdef KE_ARCH_X64
+					VSTK_PARAM_SWITCH(bool);
+#else
 					VSTK_PARAM_SWITCH(cell_t);
+#endif
 				case HookParamType_Float:
 					PARAMINFO_SWITCH(PassType_Float);
 					VSTK_PARAM_SWITCH(float);
@@ -165,7 +178,7 @@ T CallVFunction(DHooksCallback *dg, HookParamsStruct *paramStruct, void *iface)
 
 	if(paramInfo != NULL)
 	{
-		free(paramInfo);
+		delete[] paramInfo;
 	}
 
 	return ret;
@@ -195,8 +208,8 @@ SDKVector CallVFunction<SDKVector>(DHooksCallback *dg, HookParamsStruct *paramSt
 	if(paramStruct)
 	{
 		vptr += sizeof(void *);
-		paramInfo = (SourceMod::PassInfo *)malloc(sizeof(SourceMod::PassInfo) * dg->params.size());
-		for(int i = 0; i < (int)dg->params.size(); i++)
+		paramInfo = new SourceMod::PassInfo[dg->params.size()];
+		for(size_t i = 0; i < dg->params.size(); i++)
 		{
 			size_t offset = GetParamOffset(paramStruct, i);
 
@@ -210,7 +223,11 @@ SDKVector CallVFunction<SDKVector>(DHooksCallback *dg, HookParamsStruct *paramSt
 					VSTK_PARAM_SWITCH(int);
 				case HookParamType_Bool:
 					PARAMINFO_SWITCH(PassType_Basic);
+#ifdef KE_ARCH_X64
+					VSTK_PARAM_SWITCH(bool);
+#else
 					VSTK_PARAM_SWITCH(cell_t);
+#endif
 				case HookParamType_Float:
 					PARAMINFO_SWITCH(PassType_Float);
 					VSTK_PARAM_SWITCH(float);
@@ -255,7 +272,7 @@ SDKVector CallVFunction<SDKVector>(DHooksCallback *dg, HookParamsStruct *paramSt
 
 	if(paramInfo != NULL)
 	{
-		free(paramInfo);
+		delete[] paramInfo;
 	}
 
 	return ret;
@@ -286,8 +303,8 @@ string_t CallVFunction<string_t>(DHooksCallback *dg, HookParamsStruct *paramStru
 	if(paramStruct)
 	{
 		vptr += sizeof(void *);
-		paramInfo = (SourceMod::PassInfo *)malloc(sizeof(SourceMod::PassInfo) * dg->params.size());
-		for(int i = 0; i < dg->params.size(); i++)
+		paramInfo = new SourceMod::PassInfo[dg->params.size()];
+		for(size_t i = 0; i < dg->params.size(); i++)
 		{
 			size_t offset = GetParamOffset(paramStruct, i);
 
@@ -301,7 +318,11 @@ string_t CallVFunction<string_t>(DHooksCallback *dg, HookParamsStruct *paramStru
 					VSTK_PARAM_SWITCH(int);
 				case HookParamType_Bool:
 					PARAMINFO_SWITCH(PassType_Basic);
+#ifdef KE_ARCH_X64
+					VSTK_PARAM_SWITCH(bool);
+#else
 					VSTK_PARAM_SWITCH(cell_t);
+#endif
 				case HookParamType_Float:
 					PARAMINFO_SWITCH(PassType_Float);
 					VSTK_PARAM_SWITCH(float);
@@ -346,7 +367,7 @@ string_t CallVFunction<string_t>(DHooksCallback *dg, HookParamsStruct *paramStru
 
 	if(paramInfo != NULL)
 	{
-		free(paramInfo);
+		delete[] paramInfo;
 	}
 
 	return ret;

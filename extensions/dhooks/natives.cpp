@@ -401,6 +401,9 @@ cell_t Native_AddParam(IPluginContext *pContext, const cell_t *params)
 cell_t Native_EnableDetour(IPluginContext *pContext, const cell_t *params)
 {
 #if defined( DHOOKS_DYNAMIC_DETOUR )
+	if (g_DHooksShuttingDown)
+		return pContext->ThrowNativeError("DHooks is unloading.");
+
 	HookSetup *setup;
 
 	if (!GetHandleIfValidOrError(g_HookSetupHandle, (void **)&setup, pContext, params[1]))
@@ -426,13 +429,40 @@ cell_t Native_EnableDetour(IPluginContext *pContext, const cell_t *params)
 	CHookManager *pDetourManager = GetHookManager();
 	CHook* pDetour = pDetourManager->FindHook(setup->funcAddr);
 
-	// If there is no detour on this function yet, create it.
+	std::string conventionError;
+	ICallingConvention *requestedConvention =
+		ConstructCallingConvention(setup, &conventionError);
+	if (!requestedConvention)
+		return pContext->ThrowNativeError(
+			"Failed to construct the calling convention: %s",
+			conventionError.c_str());
+
 	if (!pDetour)
 	{
-		ICallingConvention *pCallConv = ConstructCallingConvention(setup);
-		pDetour = pDetourManager->HookFunction(setup->funcAddr, pCallConv);
-		if (!UpdateRegisterArgumentSizes(pDetour, setup))
-			return pContext->ThrowNativeError("A custom register for a parameter isn't supported.");
+		pDetour = pDetourManager->HookFunction(
+			setup->funcAddr,
+			requestedConvention);
+		requestedConvention = nullptr;
+		if (!pDetour)
+			return pContext->ThrowNativeError("Failed to create the detour.");
+	}
+	else if (!CallingConventionsMatch(
+				 pDetour->m_pCallingConvention,
+				 requestedConvention))
+	{
+		delete requestedConvention;
+		return pContext->ThrowNativeError(
+			"The detour calling convention is incompatible with this setup.");
+	}
+	else
+	{
+		delete requestedConvention;
+	}
+
+	if (!UpdateRegisterArgumentSizes(pDetour, setup))
+	{
+		return pContext->ThrowNativeError(
+			"The detour calling convention is incompatible with this setup.");
 	}
 
 	// Register our pre/post handler.
@@ -488,6 +518,9 @@ cell_t Native_DisableDetour(IPluginContext *pContext, const cell_t *params)
 
 cell_t HookEntityImpl(IPluginContext *pContext, const cell_t *params, uint32_t callbackIndex, uint32_t removalcbIndex)
 {
+	if (g_DHooksShuttingDown)
+		return pContext->ThrowNativeError("DHooks is unloading.");
+
 	HookSetup *setup;
 
 	if(!GetHandleIfValidOrError(g_HookSetupHandle, (void **)&setup, pContext, params[1]))
@@ -555,6 +588,11 @@ cell_t Native_HookEntity_Methodmap(IPluginContext *pContext, const cell_t *param
 
 cell_t HookGamerulesImpl(IPluginContext *pContext, const cell_t *params, uint32_t callbackIndex, uint32_t removalcbIndex)
 {
+	if (g_DHooksShuttingDown)
+		return pContext->ThrowNativeError("DHooks is unloading.");
+	if (g_DHooksMapEnding)
+		return pContext->ThrowNativeError("Cannot add a gamerules hook while the map is ending.");
+
 	HookSetup *setup;
 
 	if(!GetHandleIfValidOrError(g_HookSetupHandle, (void **)&setup, pContext, params[1]))
@@ -623,6 +661,9 @@ cell_t Native_HookGamerules_Methodmap(IPluginContext *pContext, const cell_t *pa
 
 cell_t HookRawImpl(IPluginContext *pContext, const cell_t *params, int callbackIndex, int removalcbIndex)
 {
+	if (g_DHooksShuttingDown)
+		return pContext->ThrowNativeError("DHooks is unloading.");
+
 	HookSetup *setup;
 
 	if(!GetHandleIfValidOrError(g_HookSetupHandle, (void **)&setup, pContext, params[1]))
@@ -708,8 +749,9 @@ cell_t Native_RemoveHookID(IPluginContext *pContext, const cell_t *params)
 		DHooksManager *manager = g_pHooks.at(i);
 		if(manager->hookid == params[1] && manager->callback->plugin_callback->GetParentRuntime()->GetDefaultContext() == pContext)
 		{
-			delete manager;
+			manager->callback->enabled.store(false, std::memory_order_release);
 			g_pHooks.erase(g_pHooks.begin() + i);
+			delete manager;
 			return 1;
 		}
 	}
@@ -750,7 +792,7 @@ cell_t Native_GetParam(IPluginContext *pContext, const cell_t *params)
 		case HookParamType_Int:
 			return *(int *)addr;
 		case HookParamType_Bool:
-			return *(cell_t *)addr != 0;
+			return *(bool *)addr;
 		case HookParamType_CBaseEntity:
 			return gamehelpers->EntityToBCompatRef(*(CBaseEntity **)addr);
 		case HookParamType_Edict:
@@ -817,7 +859,7 @@ cell_t Native_SetParam(IPluginContext *pContext, const cell_t *params)
 
 			if(!pEdict || pEdict->IsFree())
 			{
-				pContext->ThrowNativeError("Invalid entity index passed for param value");
+				return pContext->ThrowNativeError("Invalid entity index passed for param value");
 			}
 
 			*(edict_t **)addr = pEdict;
@@ -898,7 +940,7 @@ cell_t Native_SetReturn(IPluginContext *pContext, const cell_t *params)
 			edict_t *pEdict = gamehelpers->EdictOfIndex(params[2]);
 			if(!pEdict || pEdict->IsFree())
 			{
-				pContext->ThrowNativeError("Invalid entity index passed for return value");
+				return pContext->ThrowNativeError("Invalid entity index passed for return value");
 			}
 			returnStruct->newResult = pEdict;
 			break;
@@ -1139,6 +1181,9 @@ cell_t Native_SetParamString(IPluginContext *pContext, const cell_t *params)
 //native DHookAddEntityListener(ListenType:type, ListenCB:callback);
 cell_t Native_AddEntityListener(IPluginContext *pContext, const cell_t *params)
 {
+	if (g_DHooksShuttingDown)
+		return pContext->ThrowNativeError("DHooks is unloading.");
+
 	if(g_pEntityListener)
 	{
 		return g_pEntityListener->AddPluginEntityListener((ListenType)params[1], pContext->GetFunctionById(params[2]));;
