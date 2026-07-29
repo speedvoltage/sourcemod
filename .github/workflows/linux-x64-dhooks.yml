@@ -95,10 +95,9 @@ jobs:
           python3 ../configure.py \
             --enable-debug \
             --no-mysql \
-            --sdks='${{ env.SDKS }}' \
+            --sdks= \
             --targets=x86 \
-            '--mms-path=${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}' \
-            '--hl2sdk-root=${{ steps.paths.outputs.dependencies }}'
+            '--mms-path=${{ steps.paths.outputs.dependencies }}/mmsource-${{ env.MMSOURCE_VERSION }}'
           ambuild
           file package/addons/sourcemod/extensions/dhooks.ext.so | grep -q 'ELF 32-bit'
 
