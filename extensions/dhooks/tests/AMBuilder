@@ -4,6 +4,8 @@ for cxx in builder.targets:
   if (cxx.target.platform in ['linux', 'windows'] and
       cxx.target.arch == 'x86_64'):
     binary = SM.Program(builder, cxx, 'dhooks_microsoft_convention')
+    if cxx.target.platform == 'windows':
+      binary.sources.remove('version.rc')
     binary.compiler.defines += [
       'DYNAMICHOOKS_x86_64',
       'META_NO_HL2SDK',
