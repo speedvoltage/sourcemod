@@ -65,7 +65,7 @@ x86_64MicrosoftDefault::x86_64MicrosoftDefault(std::vector<DataTypeSized_t> &vec
 
 		if (reg_index != -1) {
 			if (used_reg[reg_index]) {
-				puts("Argument register is used twice, or shared with return");
+				SetError("Argument register is used twice or shared with the return register.");
 				return;
 			}
 			used_reg[reg_index] = true;
@@ -87,11 +87,10 @@ x86_64MicrosoftDefault::x86_64MicrosoftDefault(std::vector<DataTypeSized_t> &vec
 				m_returnType.custom_register = params_reg[i];
 				used_reg[i] = true;
 			}
-			// Couldn't find a free register, this is a big problem
-			if (m_returnType.custom_register == None) {
-				puts("Missing free register for return pointer");
-				return;
-			}
+		}
+		if (m_returnType.custom_register == None) {
+			SetError("No register is available for the return pointer.");
+			return;
 		}
 	}
 

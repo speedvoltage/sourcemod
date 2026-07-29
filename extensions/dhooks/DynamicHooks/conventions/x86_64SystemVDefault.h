@@ -23,3 +23,34 @@
 *
 * 3. This notice may not be removed or altered from any source distribution.
 */
+
+#ifndef _X86_64_SYSTEM_V_DEFAULT_H
+#define _X86_64_SYSTEM_V_DEFAULT_H
+
+#include "../convention.h"
+
+class x86_64SystemVDefault : public ICallingConvention
+{
+public:
+	x86_64SystemVDefault(std::vector<DataTypeSized_t> &vecArgTypes, DataTypeSized_t returnType, int iAlignment = 8);
+	virtual ~x86_64SystemVDefault() = default;
+
+	virtual std::vector<Register_t> GetRegisters() override;
+	virtual int GetPopSize() override;
+	virtual int GetArgStackSize() override;
+	virtual void **GetStackArgumentPtr(CRegisters *registers) override;
+	virtual int GetArgRegisterSize() override;
+	virtual void *GetArgumentPtr(unsigned int index, CRegisters *registers) override;
+	virtual void ArgumentPtrChanged(unsigned int index, CRegisters *registers, void *argumentPtr) override;
+	virtual void *GetReturnPtr(CRegisters *registers) override;
+	virtual void ReturnPtrChanged(CRegisters *registers, void *returnPtr) override;
+	virtual void SaveReturnValue(CRegisters *registers) override;
+	virtual void RestoreReturnValue(CRegisters *registers) override;
+	virtual void SaveCallArguments(CRegisters *registers) override;
+	virtual void RestoreCallArguments(CRegisters *registers) override;
+
+private:
+	std::uint32_t m_stackArgs;
+};
+
+#endif

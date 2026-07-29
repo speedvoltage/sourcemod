@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <cstring>
 #include <memory>
+#include <string>
 #include <vector>
 #include <utility>
 
@@ -176,6 +177,16 @@ public:
 	{
 	}
 
+	bool IsValid() const
+	{
+		return m_error.empty();
+	}
+
+	const std::string &GetError() const
+	{
+		return m_error;
+	}
+
 	/*
 	This should return a list of Register_t values. These registers will be
 	saved for later access.
@@ -277,6 +288,13 @@ public:
 		m_pSavedCallArguments.pop_back();
 	}
 
+protected:
+	void SetError(const char *error)
+	{
+		if (m_error.empty())
+			m_error = error;
+	}
+
 public:
 	std::vector<DataTypeSized_t> m_vecArgTypes;
 	DataTypeSized_t m_returnType;
@@ -285,6 +303,9 @@ public:
 	std::vector<std::unique_ptr<uint8_t[]>> m_pSavedReturnBuffers;
 	// Save call arguments in case the function reuses the space and overwrites the values for the post hook.
 	std::vector<std::unique_ptr<uint8_t[]>> m_pSavedCallArguments;
+
+private:
+	std::string m_error;
 };
 
 #endif // _CONVENTION_H

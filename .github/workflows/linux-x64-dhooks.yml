@@ -96,6 +96,13 @@ jobs:
           linux-x86/dhooks_abi_oracle
           linux-x86_64/dhooks_abi_oracle
 
+      - name: Run SysV convention tests
+        working-directory: sourcemod/build/extensions/dhooks/tests/dhooks_sysv_convention/linux-x86_64
+        shell: bash
+        run: |
+          file dhooks_sysv_convention | grep -q 'ELF 64-bit'
+          ./dhooks_sysv_convention
+
       - name: Build debug x86
         working-directory: sourcemod
         shell: bash

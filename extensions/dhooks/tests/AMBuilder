@@ -1,3 +1,5 @@
+import os
+
 for cxx in builder.targets:
   if cxx.target.platform != 'linux':
     continue
@@ -10,3 +12,19 @@ for cxx in builder.targets:
     'abi_targets.cpp',
   ]
   builder.Add(binary)
+
+  if cxx.target.arch == 'x86_64':
+    binary = SM.Program(builder, cxx, 'dhooks_sysv_convention')
+    binary.compiler.defines += [
+      'DYNAMICHOOKS_x86_64',
+    ]
+    binary.compiler.cxxincludes += [
+      os.path.join(builder.sourcePath, 'public', 'amtl'),
+      os.path.join(builder.sourcePath, 'extensions', 'dhooks', 'DynamicHooks'),
+    ]
+    binary.sources += [
+      'sysv_convention.cpp',
+      os.path.join('..', 'DynamicHooks', 'registers.cpp'),
+      os.path.join('..', 'DynamicHooks', 'conventions', 'x86_64SystemVDefault.cpp'),
+    ]
+    builder.Add(binary)
