@@ -103,7 +103,10 @@ bool g_DetourRemovalFrameHookRegistered;
 void UnhookFunction(HookType_t hookType, CHook *pDetour)
 {
 #if defined( DHOOKS_DYNAMIC_DETOUR )
+	CHookManager *pDetourManager = GetHookManager();
 	pDetour->RemoveCallback(hookType, (HookHandlerFn *)(void *)&HandleDetour);
+	if (!pDetour->AreCallbacksRegistered())
+		pDetourManager->UnhookFunction(pDetour->m_pFunc);
 #endif
 }
 
