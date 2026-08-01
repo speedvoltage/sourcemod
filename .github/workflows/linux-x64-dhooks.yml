@@ -191,7 +191,7 @@ jobs:
     env:
       SDKS: hl2dm
       TARGETS: x86_64
-      SOURCEHOOK_REF: 4cf7a9c9a876fe4828d7e3f8023e4b66c6b04f14
+      SOURCEHOOK_REF: 3d964e9112a77e47841d383573192812a6fff6af
       HL2SDK_HL2DM_REF: af883d5052349f09fbe641c99149b84769a62d01
     steps:
       - uses: actions/checkout@v7
