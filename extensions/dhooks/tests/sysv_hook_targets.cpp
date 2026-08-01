@@ -1,6 +1,8 @@
 #include <cstdarg>
 #include <cstdint>
 
+typedef float DHookVector __attribute__((vector_size(16)));
+
 extern "C" __attribute__((noinline)) std::uint64_t
 dhooks_hook_integer_target(std::uint64_t value)
 {
@@ -75,4 +77,29 @@ dhooks_hook_variadic_target(int count, ...)
 		result += va_arg(args, double);
 	va_end(args);
 	return result;
+}
+
+extern "C" __attribute__((noinline)) std::uint64_t
+dhooks_hook_wide_xmm_target(
+	DHookVector v0,
+	DHookVector v1,
+	DHookVector v2,
+	DHookVector v3,
+	DHookVector v4,
+	DHookVector v5,
+	DHookVector v6,
+	DHookVector v7)
+{
+	asm volatile(
+		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n"
+		"nop\nnop\nnop\nnop\nnop\nnop\nnop\nnop\n");
+	return static_cast<std::uint64_t>(
+		(v0[0] + 2.0f * v0[1] + 4.0f * v0[2] + 8.0f * v0[3]) +
+		2.0f * (v1[0] + 2.0f * v1[1] + 4.0f * v1[2] + 8.0f * v1[3]) +
+		3.0f * (v2[0] + 2.0f * v2[1] + 4.0f * v2[2] + 8.0f * v2[3]) +
+		4.0f * (v3[0] + 2.0f * v3[1] + 4.0f * v3[2] + 8.0f * v3[3]) +
+		5.0f * (v4[0] + 2.0f * v4[1] + 4.0f * v4[2] + 8.0f * v4[3]) +
+		6.0f * (v5[0] + 2.0f * v5[1] + 4.0f * v5[2] + 8.0f * v5[3]) +
+		7.0f * (v6[0] + 2.0f * v6[1] + 4.0f * v6[2] + 8.0f * v6[3]) +
+		8.0f * (v7[0] + 2.0f * v7[1] + 4.0f * v7[2] + 8.0f * v7[3]));
 }

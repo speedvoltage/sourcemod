@@ -349,7 +349,7 @@ void CHook::CreateBridge()
 	PrintRegisters(jit);
 
 #if SH_SYS == SH_SYS_LINUX
-	jit.sub(rsp, 120);
+	jit.sub(rsp, 184);
 	jit.mov(rsp(), rax);
 	jit.mov(rsp(8), rdi);
 	jit.mov(rsp(16), rsi);
@@ -357,14 +357,14 @@ void CHook::CreateBridge()
 	jit.mov(rsp(32), rcx);
 	jit.mov(rsp(40), r8);
 	jit.mov(rsp(48), r9);
-	jit.movsd(rsp(56), xmm0);
-	jit.movsd(rsp(64), xmm1);
-	jit.movsd(rsp(72), xmm2);
-	jit.movsd(rsp(80), xmm3);
-	jit.movsd(rsp(88), xmm4);
-	jit.movsd(rsp(96), xmm5);
-	jit.movsd(rsp(104), xmm6);
-	jit.movsd(rsp(112), xmm7);
+	jit.movups(rsp(56), xmm0);
+	jit.movups(rsp(72), xmm1);
+	jit.movups(rsp(88), xmm2);
+	jit.movups(rsp(104), xmm3);
+	jit.movups(rsp(120), xmm4);
+	jit.movups(rsp(136), xmm5);
+	jit.movups(rsp(152), xmm6);
+	jit.movups(rsp(168), xmm7);
 	jit.mov(
 		rax,
 		reinterpret_cast<std::uint64_t>(&IsMainThread));
@@ -377,15 +377,15 @@ void CHook::CreateBridge()
 	jit.mov(rcx, rsp(32));
 	jit.mov(r8, rsp(40));
 	jit.mov(r9, rsp(48));
-	jit.movsd(xmm0, rsp(56));
-	jit.movsd(xmm1, rsp(64));
-	jit.movsd(xmm2, rsp(72));
-	jit.movsd(xmm3, rsp(80));
-	jit.movsd(xmm4, rsp(88));
-	jit.movsd(xmm5, rsp(96));
-	jit.movsd(xmm6, rsp(104));
-	jit.movsd(xmm7, rsp(112));
-	jit.add(rsp, 120);
+	jit.movups(xmm0, rsp(56));
+	jit.movups(xmm1, rsp(72));
+	jit.movups(xmm2, rsp(88));
+	jit.movups(xmm3, rsp(104));
+	jit.movups(xmm4, rsp(120));
+	jit.movups(xmm5, rsp(136));
+	jit.movups(xmm6, rsp(152));
+	jit.movups(xmm7, rsp(168));
+	jit.add(rsp, 184);
 	jit.test(r11, r11);
 	jit.jne(0);
 	std::int32_t interceptJump = jit.get_outputpos();
@@ -649,23 +649,23 @@ void CHook::Write_SaveRegisters(x64JitWriter& jit, HookType_t type)
 		// ========================================================================
 		// >> 128-bit XMM registers
 		// ========================================================================
-		case Register_t::XMM0: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm0->m_pAddress)); jit.movsd(rax(), xmm0); break;
-		case Register_t::XMM1: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm1->m_pAddress)); jit.movsd(rax(), xmm1); break;
-		case Register_t::XMM2: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm2->m_pAddress)); jit.movsd(rax(), xmm2); break;
-		case Register_t::XMM3: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm3->m_pAddress)); jit.movsd(rax(), xmm3); break;
-		case Register_t::XMM4: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm4->m_pAddress)); jit.movsd(rax(), xmm4); break;
-		case Register_t::XMM5: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm5->m_pAddress)); jit.movsd(rax(), xmm5); break;
-		case Register_t::XMM6: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm6->m_pAddress)); jit.movsd(rax(), xmm6); break;
-		case Register_t::XMM7: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm7->m_pAddress)); jit.movsd(rax(), xmm7); break;
+		case Register_t::XMM0: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm0->m_pAddress)); jit.movups(rax(), xmm0); break;
+		case Register_t::XMM1: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm1->m_pAddress)); jit.movups(rax(), xmm1); break;
+		case Register_t::XMM2: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm2->m_pAddress)); jit.movups(rax(), xmm2); break;
+		case Register_t::XMM3: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm3->m_pAddress)); jit.movups(rax(), xmm3); break;
+		case Register_t::XMM4: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm4->m_pAddress)); jit.movups(rax(), xmm4); break;
+		case Register_t::XMM5: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm5->m_pAddress)); jit.movups(rax(), xmm5); break;
+		case Register_t::XMM6: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm6->m_pAddress)); jit.movups(rax(), xmm6); break;
+		case Register_t::XMM7: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm7->m_pAddress)); jit.movups(rax(), xmm7); break;
 
-		case Register_t::XMM8: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm8->m_pAddress)); jit.movsd(rax(), xmm8); break;
-		case Register_t::XMM9: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm9->m_pAddress)); jit.movsd(rax(), xmm9); break;
-		case Register_t::XMM10: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm10->m_pAddress)); jit.movsd(rax(), xmm10); break;
-		case Register_t::XMM11: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm11->m_pAddress)); jit.movsd(rax(), xmm11); break;
-		case Register_t::XMM12: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm12->m_pAddress)); jit.movsd(rax(), xmm12); break;
-		case Register_t::XMM13: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm13->m_pAddress)); jit.movsd(rax(), xmm13); break;
-		case Register_t::XMM14: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm14->m_pAddress)); jit.movsd(rax(), xmm14); break;
-		case Register_t::XMM15: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm15->m_pAddress)); jit.movsd(rax(), xmm15); break;
+		case Register_t::XMM8: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm8->m_pAddress)); jit.movups(rax(), xmm8); break;
+		case Register_t::XMM9: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm9->m_pAddress)); jit.movups(rax(), xmm9); break;
+		case Register_t::XMM10: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm10->m_pAddress)); jit.movups(rax(), xmm10); break;
+		case Register_t::XMM11: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm11->m_pAddress)); jit.movups(rax(), xmm11); break;
+		case Register_t::XMM12: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm12->m_pAddress)); jit.movups(rax(), xmm12); break;
+		case Register_t::XMM13: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm13->m_pAddress)); jit.movups(rax(), xmm13); break;
+		case Register_t::XMM14: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm14->m_pAddress)); jit.movups(rax(), xmm14); break;
+		case Register_t::XMM15: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm15->m_pAddress)); jit.movups(rax(), xmm15); break;
 
 		default: puts("Unsupported register.");
 		}
@@ -715,23 +715,23 @@ void CHook::Write_RestoreRegisters(x64JitWriter& jit, HookType_t type)
 		// ========================================================================
 		// >> 128-bit XMM registers
 		// ========================================================================
-		case Register_t::XMM0: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm0->m_pAddress)); jit.movsd(xmm0, rax()); break;
-		case Register_t::XMM1: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm1->m_pAddress)); jit.movsd(xmm1, rax()); break;
-		case Register_t::XMM2: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm2->m_pAddress)); jit.movsd(xmm2, rax()); break;
-		case Register_t::XMM3: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm3->m_pAddress)); jit.movsd(xmm3, rax()); break;
-		case Register_t::XMM4: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm4->m_pAddress)); jit.movsd(xmm4, rax()); break;
-		case Register_t::XMM5: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm5->m_pAddress)); jit.movsd(xmm5, rax()); break;
-		case Register_t::XMM6: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm6->m_pAddress)); jit.movsd(xmm6, rax()); break;
-		case Register_t::XMM7: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm7->m_pAddress)); jit.movsd(xmm7, rax()); break;
+		case Register_t::XMM0: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm0->m_pAddress)); jit.movups(xmm0, rax()); break;
+		case Register_t::XMM1: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm1->m_pAddress)); jit.movups(xmm1, rax()); break;
+		case Register_t::XMM2: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm2->m_pAddress)); jit.movups(xmm2, rax()); break;
+		case Register_t::XMM3: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm3->m_pAddress)); jit.movups(xmm3, rax()); break;
+		case Register_t::XMM4: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm4->m_pAddress)); jit.movups(xmm4, rax()); break;
+		case Register_t::XMM5: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm5->m_pAddress)); jit.movups(xmm5, rax()); break;
+		case Register_t::XMM6: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm6->m_pAddress)); jit.movups(xmm6, rax()); break;
+		case Register_t::XMM7: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm7->m_pAddress)); jit.movups(xmm7, rax()); break;
 
-		case Register_t::XMM8: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm8->m_pAddress)); jit.movsd(xmm8, rax()); break;
-		case Register_t::XMM9: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm9->m_pAddress)); jit.movsd(xmm9, rax()); break;
-		case Register_t::XMM10: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm10->m_pAddress)); jit.movsd(xmm10, rax()); break;
-		case Register_t::XMM11: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm11->m_pAddress)); jit.movsd(xmm11, rax()); break;
-		case Register_t::XMM12: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm12->m_pAddress)); jit.movsd(xmm12, rax()); break;
-		case Register_t::XMM13: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm13->m_pAddress)); jit.movsd(xmm13, rax()); break;
-		case Register_t::XMM14: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm14->m_pAddress)); jit.movsd(xmm14, rax()); break;
-		case Register_t::XMM15: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm15->m_pAddress)); jit.movsd(xmm15, rax()); break;
+		case Register_t::XMM8: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm8->m_pAddress)); jit.movups(xmm8, rax()); break;
+		case Register_t::XMM9: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm9->m_pAddress)); jit.movups(xmm9, rax()); break;
+		case Register_t::XMM10: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm10->m_pAddress)); jit.movups(xmm10, rax()); break;
+		case Register_t::XMM11: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm11->m_pAddress)); jit.movups(xmm11, rax()); break;
+		case Register_t::XMM12: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm12->m_pAddress)); jit.movups(xmm12, rax()); break;
+		case Register_t::XMM13: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm13->m_pAddress)); jit.movups(xmm13, rax()); break;
+		case Register_t::XMM14: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm14->m_pAddress)); jit.movups(xmm14, rax()); break;
+		case Register_t::XMM15: jit.mov(rax, reinterpret_cast<std::uint64_t>(m_pRegisters->m_xmm15->m_pAddress)); jit.movups(xmm15, rax()); break;
 
 		default: puts("Unsupported register.");
 		}

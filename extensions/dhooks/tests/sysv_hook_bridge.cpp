@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+typedef float DHookVector __attribute__((vector_size(16)));
+
 IExtension *myself;
 ISourceMod *g_pSM;
 ISourceMod *smutils;
@@ -18,6 +20,15 @@ extern "C" std::uint64_t dhooks_hook_integer_target(std::uint64_t value);
 extern "C" double dhooks_hook_double_target(double value);
 extern "C" double dhooks_hook_override_target(double value);
 extern "C" double dhooks_hook_variadic_target(int count, ...);
+extern "C" std::uint64_t dhooks_hook_wide_xmm_target(
+	DHookVector,
+	DHookVector,
+	DHookVector,
+	DHookVector,
+	DHookVector,
+	DHookVector,
+	DHookVector,
+	DHookVector);
 extern "C" std::uint64_t dhooks_hook_mixed_target(
 	std::uint64_t,
 	double,
@@ -238,12 +249,21 @@ int main()
 		reinterpret_cast<void *>(&dhooks_hook_variadic_target),
 		std::move(variadicArguments),
 		Type(DATA_TYPE_DOUBLE, 8));
+	std::vector<DataTypeSized_t> wideXmmArguments(
+		8,
+		Type(DATA_TYPE_DOUBLE, 8));
+	CHook *wideXmmHook = Install(
+		manager,
+		reinterpret_cast<void *>(&dhooks_hook_wide_xmm_target),
+		std::move(wideXmmArguments),
+		Type(DATA_TYPE_ULONG_LONG, 8));
 
 	Expect(integerHook && integerHook->IsInstalled(), "integer hook installed");
 	Expect(doubleHook && doubleHook->IsInstalled(), "double hook installed");
 	Expect(overrideHook && overrideHook->IsInstalled(), "override hook installed");
 	Expect(mixedHook && mixedHook->IsInstalled(), "mixed hook installed");
 	Expect(variadicHook && variadicHook->IsInstalled(), "variadic hook installed");
+	Expect(wideXmmHook && wideXmmHook->IsInstalled(), "wide XMM hook installed");
 
 	decltype(&dhooks_hook_integer_target) volatile integerTarget =
 		&dhooks_hook_integer_target;
@@ -255,6 +275,17 @@ int main()
 		&dhooks_hook_mixed_target;
 	decltype(&dhooks_hook_variadic_target) volatile variadicTarget =
 		&dhooks_hook_variadic_target;
+	decltype(&dhooks_hook_wide_xmm_target) volatile wideXmmTarget =
+		&dhooks_hook_wide_xmm_target;
+
+	const DHookVector v0 = {1.0f, 2.0f, 3.0f, 4.0f};
+	const DHookVector v1 = {5.0f, 6.0f, 7.0f, 8.0f};
+	const DHookVector v2 = {9.0f, 10.0f, 11.0f, 12.0f};
+	const DHookVector v3 = {13.0f, 14.0f, 15.0f, 16.0f};
+	const DHookVector v4 = {17.0f, 18.0f, 19.0f, 20.0f};
+	const DHookVector v5 = {21.0f, 22.0f, 23.0f, 24.0f};
+	const DHookVector v6 = {25.0f, 26.0f, 27.0f, 28.0f};
+	const DHookVector v7 = {29.0f, 30.0f, 31.0f, 32.0f};
 
 	Expect(
 		integerTarget(0x12345678ULL) == 0x5b05b05bULL,
@@ -288,6 +319,9 @@ int main()
 		Close(variadicTarget(2, 3.5, 4.25), 7.75),
 		"recursive variadic hook retains the outer AL register count");
 	Expect(
+		wideXmmTarget(v0, v1, v2, v3, v4, v5, v6, v7) == 11844,
+		"full-width XMM arguments survive the hook bridge");
+	Expect(
 		ranRecursiveVariadic &&
 			recursiveVariadicClobberedRax &&
 			recursiveVariadicRestoredRax &&
@@ -296,10 +330,11 @@ int main()
 	Expect(
 		dhooks_hook_handler_alignment_mask == (1u << 8),
 		"hook handlers enter with SysV stack alignment");
-	Expect(preCalls == 6 && postCalls == 6, "pre and post handlers ran");
+	Expect(preCalls == 7 && postCalls == 7, "pre and post handlers ran");
 
 	std::uint64_t workerResult = 0;
 	std::uint64_t workerMixedResult = 0;
+	std::uint64_t workerWideXmmResult = 0;
 	std::thread worker([&]() {
 		workerResult = integerTarget(0x87654321ULL);
 		workerMixedResult = mixedTarget(
@@ -312,6 +347,8 @@ int main()
 			7, 16.0,
 			17.0,
 			18.0);
+		workerWideXmmResult =
+			wideXmmTarget(v0, v1, v2, v3, v4, v5, v6, v7);
 	});
 	worker.join();
 	Expect(
@@ -320,7 +357,10 @@ int main()
 	Expect(
 		workerMixedResult == 266,
 		"off-thread bypass preserves all scalar argument classes");
-	Expect(preCalls == 6 && postCalls == 6, "off-thread calls skip hook handlers");
+	Expect(
+		workerWideXmmResult == 11844,
+		"off-thread bypass preserves full-width XMM arguments");
+	Expect(preCalls == 7 && postCalls == 7, "off-thread calls skip hook handlers");
 
 	manager.UnhookAllFunctions();
 	Expect(manager.m_Hooks.empty(), "hooks uninstall cleanly");
